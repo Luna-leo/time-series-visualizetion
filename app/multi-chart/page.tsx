@@ -1,44 +1,33 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { MultiSeriesTimeSeriesChart } from '../../components/MultiSeriesTimeSeriesChart';
-import DataStore, { SENSOR_TYPES, FETCH_CONFIG, type DataDensity } from '../../lib/dataStore';
+import { GridControls } from '../../components/common/GridControls';
+import { ProgressBar } from '../../components/common/ProgressBar';
+import { useChartDimensions } from '../../hooks/useChartDimensions';
+import { useMultiChartSeriesVisibility } from '../../hooks/useSeriesVisibility';
+import { GRID_CONFIGURATIONS } from '../../constants/chartTheme';
+import DataStore, { SENSOR_TYPES, FETCH_CONFIG } from '../../lib/dataStore';
+import type { GridSize, DataDensity, ChartMetadata } from '../../types/chart';
+import type { PerformanceMetrics } from '../../types/performance';
 
-type GridSize = '1x1' | '2x2' | '3x3' | '4x4';
-
-interface ChartData {
-  id: number;
-  data: number[][];
-  labels: string[];
-  title: string;
-}
-
-interface PerformanceMetrics {
-  dataFetchTime: number;
-  renderStartTime: number;
-  totalCharts: number;
-}
-
-const GRID_DIMENSIONS = {
-  '1x1': { rows: 1, cols: 1 },
-  '2x2': { rows: 2, cols: 2 },
-  '3x3': { rows: 3, cols: 3 },
-  '4x4': { rows: 4, cols: 4 },
-};
-
-export default function MultiChartPage() {
+export default function MultiChartRefactoredPage() {
+  // State management
   const [gridSize, setGridSize] = useState<GridSize>('2x2');
   const [dataDensity, setDataDensity] = useState<DataDensity>('medium');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [charts, setCharts] = useState<ChartData[]>([]);
-  const [visibleSeries, setVisibleSeries] = useState<Record<number, boolean[]>>({});
-  const [chartSize, setChartSize] = useState({ width: 400, height: 300 });
+  const [charts, setCharts] = useState<ChartMetadata[]>([]);
   const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetrics | null>(null);
   const [loadProgress, setLoadProgress] = useState(0);
-  
+
+  // Custom hooks
+  const chartCount = GRID_CONFIGURATIONS[gridSize].rows * GRID_CONFIGURATIONS[gridSize].cols;
+  const chartSize = useChartDimensions({ gridSize, headerHeight: 200 });
+  const { visibilityMap } = useMultiChartSeriesVisibility(chartCount);
+
+  // Data store instance
   const dataStore = DataStore.getInstance();
-  const chartCount = GRID_DIMENSIONS[gridSize].rows * GRID_DIMENSIONS[gridSize].cols;
 
   // Initialize data store on mount
   useEffect(() => {
@@ -50,60 +39,42 @@ export default function MultiChartPage() {
         await loadCharts(gridSize, dataDensity);
       } catch (error) {
         console.error('Failed to initialize data store:', error);
+        setIsInitializing(false);
       }
     };
     
     initializeDataStore();
   }, []);
 
-  // Calculate chart sizes based on grid
-  useEffect(() => {
-    const calculateChartSize = () => {
-      const grid = GRID_DIMENSIONS[gridSize];
-      const padding = 40;
-      const headerHeight = 200;
-      const width = Math.floor((window.innerWidth - padding) / grid.cols) - 10;
-      const height = Math.floor((window.innerHeight - headerHeight - padding) / grid.rows) - 10;
-      setChartSize({ 
-        width: Math.max(width, 200), 
-        height: Math.max(height, 150) 
-      });
-    };
-
-    calculateChartSize();
-    window.addEventListener('resize', calculateChartSize);
-    return () => window.removeEventListener('resize', calculateChartSize);
-  }, [gridSize]);
-
-  const loadCharts = async (size: GridSize, density: DataDensity) => {
+  // Load charts with progress tracking
+  const loadCharts = useCallback(async (size: GridSize, density: DataDensity) => {
     if (!dataStore.isInitialized()) return;
     
     setIsLoading(true);
     setLoadProgress(0);
     const startTime = performance.now();
     
-    const count = GRID_DIMENSIONS[size].rows * GRID_DIMENSIONS[size].cols;
-    const newCharts: ChartData[] = [];
-    const newVisibleSeries: Record<number, boolean[]> = {};
+    const count = GRID_CONFIGURATIONS[size].rows * GRID_CONFIGURATIONS[size].cols;
+    const newCharts: ChartMetadata[] = [];
     
     // Progressive loading in batches
     const batches = Math.ceil(count / FETCH_CONFIG.batchSize);
     
-    for (let batch = 0; batch < batches; batch++) {
-      const start = batch * FETCH_CONFIG.batchSize;
-      const end = Math.min(start + FETCH_CONFIG.batchSize, count);
-      const batchRequests = [];
-      
-      // Prepare batch requests
-      for (let i = start; i < end; i++) {
-        const sensorType = SENSOR_TYPES[i % SENSOR_TYPES.length];
-        batchRequests.push({
-          sensorName: sensorType.name,
-          density
-        });
-      }
-      
-      try {
+    try {
+      for (let batch = 0; batch < batches; batch++) {
+        const start = batch * FETCH_CONFIG.batchSize;
+        const end = Math.min(start + FETCH_CONFIG.batchSize, count);
+        const batchRequests = [];
+        
+        // Prepare batch requests
+        for (let i = start; i < end; i++) {
+          const sensorType = SENSOR_TYPES[i % SENSOR_TYPES.length];
+          batchRequests.push({
+            sensorName: sensorType.name,
+            density
+          });
+        }
+        
         // Fetch batch data
         const batchData = await dataStore.fetchMultipleSensors(batchRequests, 'remote');
         
@@ -118,9 +89,8 @@ export default function MultiChartPage() {
             data,
             labels,
             title: `${sensorType.name} (${sensorType.unit})`,
+            sensorType: sensorType.name,
           });
-          
-          newVisibleSeries[chartIdx] = new Array(6).fill(true);
         });
         
         // Update progress
@@ -128,46 +98,51 @@ export default function MultiChartPage() {
         
         // Update UI progressively
         setCharts([...newCharts]);
-        setVisibleSeries({ ...newVisibleSeries });
         
         // Allow UI to update between batches
         await new Promise(resolve => requestAnimationFrame(resolve));
-        
-      } catch (error) {
-        console.error(`Failed to load batch ${batch}:`, error);
       }
+      
+      const fetchTime = performance.now() - startTime;
+      const totalPoints = newCharts.reduce((sum, chart) => 
+        sum + (chart.data[0]?.length || 0) * (chart.data.length - 1), 0
+      );
+      
+      setPerformanceMetrics({
+        dataFetchTime: fetchTime,
+        renderStartTime: performance.now() - startTime,
+        totalCharts: count,
+        totalDataPoints: totalPoints,
+      });
+    } catch (error) {
+      console.error('Failed to load charts:', error);
+    } finally {
+      setIsLoading(false);
+      setLoadProgress(100);
     }
-    
-    const fetchTime = performance.now() - startTime;
-    setPerformanceMetrics({
-      dataFetchTime: fetchTime,
-      renderStartTime: performance.now() - startTime,
-      totalCharts: count
-    });
-    
-    setIsLoading(false);
-    setLoadProgress(100);
-  };
+  }, [dataStore]);
 
-  const handleGridSizeChange = async (newSize: GridSize) => {
+  // Handle control changes
+  const handleGridSizeChange = useCallback(async (newSize: GridSize) => {
     setGridSize(newSize);
     await loadCharts(newSize, dataDensity);
-  };
+  }, [dataDensity, loadCharts]);
 
-  const handleDensityChange = async (newDensity: DataDensity) => {
+  const handleDensityChange = useCallback(async (newDensity: DataDensity) => {
     setDataDensity(newDensity);
     await loadCharts(gridSize, newDensity);
-  };
+  }, [gridSize, loadCharts]);
 
-
+  // Calculate statistics
   const totalPoints = charts.reduce((sum, chart) => 
     sum + (chart.data[0]?.length || 0) * (chart.data.length - 1), 0
   );
 
   const visiblePoints = charts.reduce((sum, chart) => 
-    sum + (chart.data[0]?.length || 0) * (visibleSeries[chart.id]?.filter(v => v).length || 0), 0
+    sum + (chart.data[0]?.length || 0) * (visibilityMap[chart.id]?.filter(v => v).length || 0), 0
   );
 
+  // Render
   if (isInitializing) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -182,48 +157,22 @@ export default function MultiChartPage() {
   return (
     <div className="h-screen p-4 flex flex-col overflow-hidden">
       <div className="mb-2">
-        <h1 className="text-xl font-bold text-center mb-2">Multi-Chart Load Test (Realistic Mode)</h1>
+        <h1 className="text-xl font-bold text-center mb-2">
+          Multi-Chart Load Test (Realistic Mode)
+        </h1>
         
-        <div className="flex justify-center items-center gap-4 mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold">Grid Size:</span>
-            {(['1x1', '2x2', '3x3', '4x4'] as GridSize[]).map(size => (
-              <button
-                key={size}
-                onClick={() => handleGridSizeChange(size)}
-                disabled={isLoading}
-                className={`px-3 py-1 text-sm rounded ${
-                  gridSize === size 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-200 hover:bg-gray-300'
-                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {size}
-              </button>
-            ))}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold">Density:</span>
-            {(['full', 'medium', 'low'] as DataDensity[]).map(density => (
-              <button
-                key={density}
-                onClick={() => handleDensityChange(density)}
-                disabled={isLoading}
-                className={`px-3 py-1 text-sm rounded ${
-                  dataDensity === density 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-200 hover:bg-gray-300'
-                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {density}
-              </button>
-            ))}
-          </div>
-        </div>
+        <GridControls
+          gridSize={gridSize}
+          onGridSizeChange={handleGridSizeChange}
+          dataDensity={dataDensity}
+          onDensityChange={handleDensityChange}
+          disabled={isLoading}
+          className="mb-2"
+        />
         
         <div className="text-center text-sm">
-          <span className="font-semibold">Total Points:</span> {totalPoints.toLocaleString()} ({visiblePoints.toLocaleString()} visible) | 
+          <span className="font-semibold">Total Points:</span> {totalPoints.toLocaleString()} 
+          ({visiblePoints.toLocaleString()} visible) | 
           <span className="font-semibold ml-2">Charts:</span> {chartCount}
           {performanceMetrics && (
             <> | <span className="font-semibold ml-2">Fetch Time:</span> {performanceMetrics.dataFetchTime.toFixed(0)}ms</>
@@ -233,13 +182,10 @@ export default function MultiChartPage() {
       
       {isLoading && (
         <div className="mb-2">
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${loadProgress}%` }}
-            />
-          </div>
-          <div className="text-center text-sm mt-1">Loading charts... {Math.round(loadProgress)}%</div>
+          <ProgressBar 
+            progress={loadProgress}
+            message="Loading charts..."
+          />
         </div>
       )}
       
@@ -251,8 +197,8 @@ export default function MultiChartPage() {
         <div 
           className="flex-1 grid gap-2 overflow-hidden"
           style={{
-            gridTemplateColumns: `repeat(${GRID_DIMENSIONS[gridSize].cols}, 1fr)`,
-            gridTemplateRows: `repeat(${GRID_DIMENSIONS[gridSize].rows}, 1fr)`,
+            gridTemplateColumns: `repeat(${GRID_CONFIGURATIONS[gridSize].cols}, 1fr)`,
+            gridTemplateRows: `repeat(${GRID_CONFIGURATIONS[gridSize].rows}, 1fr)`,
           }}
         >
           {charts.map(chart => (
@@ -264,7 +210,7 @@ export default function MultiChartPage() {
                 yLabel=""
                 width={chartSize.width}
                 height={chartSize.height}
-                visibleSeries={visibleSeries[chart.id]}
+                visibleSeries={visibilityMap[chart.id]}
               />
             </div>
           ))}

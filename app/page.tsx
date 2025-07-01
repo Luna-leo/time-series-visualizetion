@@ -96,9 +96,6 @@ export default function Home() {
         <a href="/multi-chart" className="text-blue-600 hover:underline text-sm block">
           → Go to Multi-Chart Load Test (up to 4x4 grid)
         </a>
-        <a href="/multi-chart-refactored" className="text-green-600 hover:underline text-sm block">
-          → Go to Refactored Multi-Chart (with improved architecture)
-        </a>
       </div>
       
       {isLoading ? (
