@@ -93,7 +93,7 @@ export default function MultiSeriesTimeSeriesChart({
         },
       ],
       legend: {
-        show: true,
+        show: width > 400, // Only show legend on larger charts
         live: false,
       },
     };

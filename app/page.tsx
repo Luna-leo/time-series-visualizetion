@@ -92,6 +92,11 @@ export default function Home() {
   return (
     <div className="h-screen p-4 flex flex-col overflow-hidden">
       <h1 className="text-2xl font-bold mb-2 text-center">uPlot Multi-Series Time Series Scatter Plot Load Test</h1>
+      <div className="text-center mb-2">
+        <a href="/multi-chart" className="text-blue-600 hover:underline text-sm">
+          → Go to Multi-Chart Load Test (up to 4x4 grid)
+        </a>
+      </div>
       
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center">
