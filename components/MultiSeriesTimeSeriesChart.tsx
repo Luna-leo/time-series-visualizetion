@@ -19,7 +19,7 @@ interface MultiSeriesTimeSeriesChartProps extends BaseChartProps {
   showLines?: boolean;
 }
 
-export const MultiSeriesTimeSeriesChart: React.FC<MultiSeriesTimeSeriesChartProps> = ({
+const MultiSeriesTimeSeriesChartComponent: React.FC<MultiSeriesTimeSeriesChartProps> = ({
   data,
   seriesLabels,
   width,
@@ -114,3 +114,22 @@ export const MultiSeriesTimeSeriesChart: React.FC<MultiSeriesTimeSeriesChartProp
     </ChartWrapper>
   );
 };
+
+// Memoize the component to prevent unnecessary re-renders
+export const MultiSeriesTimeSeriesChart = React.memo(MultiSeriesTimeSeriesChartComponent, (prevProps, nextProps) => {
+  // Custom comparison to check if props have changed
+  return (
+    prevProps.data === nextProps.data &&
+    prevProps.width === nextProps.width &&
+    prevProps.height === nextProps.height &&
+    prevProps.title === nextProps.title &&
+    prevProps.yLabel === nextProps.yLabel &&
+    prevProps.loading === nextProps.loading &&
+    prevProps.error === nextProps.error &&
+    prevProps.pointSize === nextProps.pointSize &&
+    prevProps.showLines === nextProps.showLines &&
+    prevProps.className === nextProps.className &&
+    JSON.stringify(prevProps.seriesLabels) === JSON.stringify(nextProps.seriesLabels) &&
+    JSON.stringify(prevProps.visibleSeries) === JSON.stringify(nextProps.visibleSeries)
+  );
+});
