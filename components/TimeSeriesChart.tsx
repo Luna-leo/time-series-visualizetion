@@ -1,81 +1,95 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import uPlot from 'uplot';
-import 'uplot/dist/uPlot.min.css';
+import React from 'react';
+import { BaseChart } from './common/BaseChart';
+import { ChartWrapper } from './common/ChartWrapper';
+import { getDefaultScatterSeries } from '../constants/chartDefaults';
+import { CHART_STYLES } from '../constants/chartTheme';
+import type { BaseChartProps, SingleSeriesData } from '../types/chart';
+import type uPlot from 'uplot';
 
-interface TimeSeriesChartProps {
-  data: [number[], number[]];
-  width?: number;
-  height?: number;
-  title?: string;
+interface TimeSeriesChartProps extends BaseChartProps {
+  data: SingleSeriesData;
   yLabel?: string;
+  loading?: boolean;
+  error?: Error | string | null;
+  pointSize?: number;
+  showLine?: boolean;
 }
 
-export default function TimeSeriesChart({ 
-  data, 
-  width = 800, 
-  height = 600,
-  title = 'Time Series Chart',
-  yLabel = 'Value'
-}: TimeSeriesChartProps) {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const plotRef = useRef<uPlot | null>(null);
+export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
+  data,
+  width,
+  height,
+  title,
+  yLabel = 'Value',
+  loading = false,
+  error = null,
+  pointSize = CHART_STYLES.points.defaultSize,
+  showLine = false,
+  className,
+}) => {
+  // Build uPlot options
+  const chartOptions: Partial<uPlot.Options> = React.useMemo(() => {
+    const series: uPlot.Series[] = [
+      {
+        label: 'Time',
+      },
+      {
+        ...getDefaultScatterSeries(yLabel, 0),
+        points: {
+          show: true,
+          size: pointSize,
+          fill: CHART_STYLES.axes.stroke,
+          stroke: CHART_STYLES.axes.stroke,
+          width: CHART_STYLES.points.strokeWidth,
+        },
+        ...(showLine ? {
+          stroke: CHART_STYLES.axes.stroke,
+          width: CHART_STYLES.line.defaultWidth,
+          paths: undefined,
+        } : {
+          stroke: 'transparent',
+          width: 0,
+          paths: () => null,
+        }),
+      },
+    ];
 
-  useEffect(() => {
-    if (!chartRef.current) return;
-
-    const opts: uPlot.Options = {
-      width,
-      height,
-      title,
+    return {
+      series,
       scales: {
         x: {
           time: true,
         },
       },
-      series: [
-        {
-          label: 'Time',
-        },
-        {
-          label: yLabel,
-          stroke: 'transparent',
-          width: 0,
-          points: {
-            show: true,
-            size: 6,
-            fill: 'rgba(59, 130, 246, 0.6)',
-            stroke: 'rgba(59, 130, 246, 1)',
-            width: 1,
-          },
-          paths: () => null,
-        },
-      ],
       axes: [
         {
-          stroke: '#ccc',
-          grid: {
-            stroke: '#eee',
-            width: 1,
-          },
+          stroke: CHART_STYLES.axes.stroke,
+          grid: CHART_STYLES.axes.grid,
         },
         {
-          stroke: '#ccc',
-          grid: {
-            stroke: '#eee',
-            width: 1,
-          },
+          stroke: CHART_STYLES.axes.stroke,
+          grid: CHART_STYLES.axes.grid,
+          label: yLabel,
         },
       ],
     };
+  }, [yLabel, pointSize, showLine]);
 
-    plotRef.current = new uPlot(opts, data, chartRef.current);
-
-    return () => {
-      plotRef.current?.destroy();
-    };
-  }, [data, width, height, title, yLabel]);
-
-  return <div ref={chartRef}></div>;
-}
+  return (
+    <ChartWrapper
+      title={title}
+      loading={loading}
+      error={error}
+      className={className}
+    >
+      <BaseChart
+        data={data}
+        options={chartOptions}
+        width={width}
+        height={height}
+      />
+    </ChartWrapper>
+  );
+};
