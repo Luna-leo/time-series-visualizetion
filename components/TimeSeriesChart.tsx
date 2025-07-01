@@ -40,13 +40,16 @@ export default function TimeSeriesChart({
         },
         {
           label: yLabel,
-          stroke: 'blue',
-          width: 2,
+          stroke: 'transparent',
+          width: 0,
           points: {
             show: true,
-            size: 4,
-            fill: 'blue',
+            size: 6,
+            fill: 'rgba(59, 130, 246, 0.6)',
+            stroke: 'rgba(59, 130, 246, 1)',
+            width: 1,
           },
+          paths: () => null,
         },
       ],
       axes: [
