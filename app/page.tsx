@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MultiSeriesTimeSeriesChart } from '../components/MultiSeriesTimeSeriesChart';
 
 export default function Home() {
@@ -86,8 +86,14 @@ export default function Home() {
     setVisibleSeries(newVisibleSeries);
   };
 
-  const totalPoints = isLoading ? 0 : (timeSeriesData[0]?.length || 0) * (timeSeriesData.length - 1);
-  const visiblePoints = isLoading ? 0 : (timeSeriesData[0]?.length || 0) * visibleSeries.filter(v => v).length;
+  const totalPoints = useMemo(() => 
+    isLoading ? 0 : (timeSeriesData[0]?.length || 0) * (timeSeriesData.length - 1),
+    [isLoading, timeSeriesData]
+  );
+  const visiblePoints = useMemo(() => 
+    isLoading ? 0 : (timeSeriesData[0]?.length || 0) * visibleSeries.filter(v => v).length,
+    [isLoading, timeSeriesData, visibleSeries]
+  );
 
   return (
     <div className="h-screen p-4 flex flex-col overflow-hidden">

@@ -17,7 +17,7 @@ interface TimeSeriesChartProps extends BaseChartProps {
   showLine?: boolean;
 }
 
-export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
+const TimeSeriesChartComponent: React.FC<TimeSeriesChartProps> = ({
   data,
   width,
   height,
@@ -93,3 +93,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     </ChartWrapper>
   );
 };
+
+// Memoize the component to prevent unnecessary re-renders
+export const TimeSeriesChart = React.memo(TimeSeriesChartComponent);

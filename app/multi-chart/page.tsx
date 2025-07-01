@@ -1,15 +1,38 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { MultiSeriesTimeSeriesChart } from '../../components/MultiSeriesTimeSeriesChart';
 import { GridControls } from '../../components/common/GridControls';
 import { ProgressBar } from '../../components/common/ProgressBar';
+import { LazyChart } from '../../components/common/LazyChart';
 import { useChartDimensions } from '../../hooks/useChartDimensions';
 import { useMultiChartSeriesVisibility } from '../../hooks/useSeriesVisibility';
 import { GRID_CONFIGURATIONS } from '../../constants/chartTheme';
 import DataStore, { SENSOR_TYPES, FETCH_CONFIG } from '../../lib/dataStore';
 import type { GridSize, DataDensity, ChartMetadata } from '../../types/chart';
 import type { PerformanceMetrics } from '../../types/performance';
+
+// Memoized chart item component to prevent unnecessary re-renders
+const ChartItem = React.memo<{
+  chart: ChartMetadata;
+  width: number;
+  height: number;
+  visibleSeries?: boolean[];
+}>(({ chart, width, height, visibleSeries }) => (
+  <LazyChart height={height} className="border rounded p-1 overflow-hidden">
+    <MultiSeriesTimeSeriesChart
+      data={chart.data}
+      seriesLabels={chart.labels}
+      title={chart.title}
+      yLabel=""
+      width={width}
+      height={height}
+      visibleSeries={visibleSeries}
+    />
+  </LazyChart>
+));
+
+ChartItem.displayName = 'ChartItem';
 
 export default function MultiChartRefactoredPage() {
   // State management
@@ -96,11 +119,20 @@ export default function MultiChartRefactoredPage() {
         // Update progress
         setLoadProgress(((batch + 1) / batches) * 100);
         
-        // Update UI progressively
-        setCharts([...newCharts]);
+        // Update UI progressively - only update state if this is the last batch
+        // or if we've loaded a significant number of charts (improves performance)
+        if (batch === batches - 1 || newCharts.length % 16 === 0) {
+          setCharts([...newCharts]);
+        }
         
-        // Allow UI to update between batches
-        await new Promise(resolve => requestAnimationFrame(resolve));
+        // Allow UI to update between batches using idle callback for better performance
+        await new Promise(resolve => {
+          if ('requestIdleCallback' in window) {
+            (window as Window & { requestIdleCallback: (callback: () => void, options?: { timeout: number }) => void }).requestIdleCallback(() => resolve(undefined), { timeout: 50 });
+          } else {
+            requestAnimationFrame(() => resolve(undefined));
+          }
+        });
       }
       
       const fetchTime = performance.now() - startTime;
@@ -133,13 +165,17 @@ export default function MultiChartRefactoredPage() {
     await loadCharts(gridSize, newDensity);
   }, [gridSize, loadCharts]);
 
-  // Calculate statistics
-  const totalPoints = charts.reduce((sum, chart) => 
-    sum + (chart.data[0]?.length || 0) * (chart.data.length - 1), 0
+  // Calculate statistics with memoization
+  const totalPoints = useMemo(() => 
+    charts.reduce((sum, chart) => 
+      sum + (chart.data[0]?.length || 0) * (chart.data.length - 1), 0
+    ), [charts]
   );
 
-  const visiblePoints = charts.reduce((sum, chart) => 
-    sum + (chart.data[0]?.length || 0) * (visibilityMap[chart.id]?.filter(v => v).length || 0), 0
+  const visiblePoints = useMemo(() => 
+    charts.reduce((sum, chart) => 
+      sum + (chart.data[0]?.length || 0) * (visibilityMap[chart.id]?.filter(v => v).length || 0), 0
+    ), [charts, visibilityMap]
   );
 
   // Render
@@ -202,17 +238,13 @@ export default function MultiChartRefactoredPage() {
           }}
         >
           {charts.map(chart => (
-            <div key={chart.id} className="border rounded p-1 overflow-hidden">
-              <MultiSeriesTimeSeriesChart
-                data={chart.data}
-                seriesLabels={chart.labels}
-                title={chart.title}
-                yLabel=""
-                width={chartSize.width}
-                height={chartSize.height}
-                visibleSeries={visibilityMap[chart.id]}
-              />
-            </div>
+            <ChartItem
+              key={chart.id}
+              chart={chart}
+              width={chartSize.width}
+              height={chartSize.height}
+              visibleSeries={visibilityMap[chart.id]}
+            />
           ))}
         </div>
       )}

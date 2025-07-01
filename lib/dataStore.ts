@@ -48,7 +48,7 @@ export const FETCH_CONFIG = {
   },
   
   // Batch size (number of charts to fetch at once)
-  batchSize: 4,
+  batchSize: 8,
   
   // Cache expiry (seconds)
   cacheExpiry: 300

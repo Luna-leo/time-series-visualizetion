@@ -3,3 +3,4 @@ export * from './BaseChart';
 export * from './ChartWrapper';
 export * from './GridControls';
 export * from './ProgressBar';
+export * from './LazyChart';
