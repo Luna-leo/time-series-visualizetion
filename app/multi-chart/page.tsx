@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import MultiSeriesTimeSeriesChart from '../../components/MultiSeriesTimeSeriesChart';
+import { MultiSeriesTimeSeriesChart } from '../../components/MultiSeriesTimeSeriesChart';
 import DataStore, { SENSOR_TYPES, FETCH_CONFIG, type DataDensity } from '../../lib/dataStore';
 
 type GridSize = '1x1' | '2x2' | '3x3' | '4x4';
@@ -159,12 +159,6 @@ export default function MultiChartPage() {
     await loadCharts(gridSize, newDensity);
   };
 
-  const toggleSeries = (chartId: number, seriesIndex: number) => {
-    setVisibleSeries(prev => ({
-      ...prev,
-      [chartId]: prev[chartId].map((v, i) => i === seriesIndex ? !v : v)
-    }));
-  };
 
   const totalPoints = charts.reduce((sum, chart) => 
     sum + (chart.data[0]?.length || 0) * (chart.data.length - 1), 0

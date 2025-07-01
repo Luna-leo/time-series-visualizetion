@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import MultiSeriesTimeSeriesChart from '../components/MultiSeriesTimeSeriesChart';
+import { MultiSeriesTimeSeriesChart } from '../components/MultiSeriesTimeSeriesChart';
 
 export default function Home() {
   const [dataGenerationTime, setDataGenerationTime] = useState(0);
@@ -93,8 +93,11 @@ export default function Home() {
     <div className="h-screen p-4 flex flex-col overflow-hidden">
       <h1 className="text-2xl font-bold mb-2 text-center">uPlot Multi-Series Time Series Scatter Plot Load Test</h1>
       <div className="text-center mb-2">
-        <a href="/multi-chart" className="text-blue-600 hover:underline text-sm">
+        <a href="/multi-chart" className="text-blue-600 hover:underline text-sm block">
           → Go to Multi-Chart Load Test (up to 4x4 grid)
+        </a>
+        <a href="/multi-chart-refactored" className="text-green-600 hover:underline text-sm block">
+          → Go to Refactored Multi-Chart (with improved architecture)
         </a>
       </div>
       
