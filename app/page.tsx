@@ -19,13 +19,17 @@ export default function UnifiedChartPage() {
 
   // Custom hooks
   const chartCount = GRID_CONFIGURATIONS[gridSize].rows * GRID_CONFIGURATIONS[gridSize].cols;
-  const chartSize = useChartDimensions({ gridSize });
   const { visibilityMap } = useMultiChartSeriesVisibility(chartCount);
   
   const { charts, isLoading, isInitializing, error, loadCharts } = useChartData({
     initialGridSize: gridSize,
     initialDensity: dataDensity,
     onProgress: setLoadProgress,
+  });
+  
+  const chartSize = useChartDimensions({ 
+    gridSize,
+    hasProgressBar: isLoading && gridSize !== '1x1'
   });
 
   const { totalPoints, visiblePoints, performanceMetrics, trackLoadingPerformance } = useChartMetrics({

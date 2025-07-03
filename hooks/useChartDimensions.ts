@@ -7,14 +7,15 @@ interface UseChartDimensionsOptions {
   gridSize?: GridSize;
   padding?: number;
   headerHeight?: number;
+  hasProgressBar?: boolean;
 }
 
 // Grid-specific minimum sizes for better responsive behavior
 const GRID_MIN_SIZES: Record<GridSize, { width: number; height: number }> = {
   '1x1': { width: 200, height: 150 },
-  '2x2': { width: 120, height: 100 },
-  '3x3': { width: 80, height: 70 },
-  '4x4': { width: 60, height: 50 },
+  '2x2': { width: 120, height: 80 },  // Reduced from 100
+  '3x3': { width: 80, height: 60 },   // Reduced from 70
+  '4x4': { width: 60, height: 40 },   // Reduced from 50
 };
 
 export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
@@ -22,6 +23,7 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
     gridSize,
     padding = LAYOUT_CONSTANTS.container.padding,
     headerHeight = LAYOUT_CONSTANTS.header.height,
+    hasProgressBar = false,
   } = options;
 
   const [dimensions, setDimensions] = useState(() => {
@@ -38,12 +40,13 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
 
     // For 1x1 grid, use larger dimensions
     if (gridSize === '1x1') {
+      const effectiveHeaderHeight = headerHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
       const width = Math.min(
         window.innerWidth - CHART_SPACING.containerPadding - CHART_SPACING.paddingAndBorder,
         LAYOUT_CONSTANTS.maxDimensions.width
       );
       const height = Math.min(
-        window.innerHeight - CHART_SPACING.containerPadding - headerHeight - CHART_SPACING.paddingAndBorder,
+        window.innerHeight - CHART_SPACING.containerPadding - effectiveHeaderHeight - CHART_SPACING.paddingAndBorder,
         LAYOUT_CONSTANTS.maxDimensions.height
       );
       const minSize = GRID_MIN_SIZES[gridSize];
@@ -55,9 +58,10 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
 
     const grid = GRID_CONFIGURATIONS[gridSize];
     const gap = LAYOUT_CONSTANTS.chart.gap;
+    const effectiveHeaderHeight = headerHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
     
     const availableWidth = window.innerWidth - CHART_SPACING.containerPadding - (grid.cols - 1) * gap;
-    const availableHeight = window.innerHeight - CHART_SPACING.containerPadding - headerHeight - (grid.rows - 1) * gap;
+    const availableHeight = window.innerHeight - CHART_SPACING.containerPadding - effectiveHeaderHeight - (grid.rows - 1) * gap;
     
     const width = Math.floor(availableWidth / grid.cols) - CHART_SPACING.paddingAndBorder;
     const height = Math.floor(availableHeight / grid.rows) - CHART_SPACING.paddingAndBorder;
@@ -71,7 +75,7 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
 
   const updateDimensions = useCallback(() => {
     setDimensions(calculateDimensions());
-  }, [gridSize, padding, headerHeight]);
+  }, [gridSize, padding, headerHeight, hasProgressBar]);
 
   useEffect(() => {
     // Skip if no window object (SSR)

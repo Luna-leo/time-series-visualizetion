@@ -17,6 +17,9 @@ export const LAYOUT_CONSTANTS = {
     width: 1200,
     height: 650,
   },
+  progressBar: {
+    height: 40, // Including mb-2 margin
+  },
 } as const;
 
 // Calculated values for convenience
