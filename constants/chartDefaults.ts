@@ -14,16 +14,29 @@ export const getDefaultChartOptions = (overrides?: Partial<ChartOptions>) => ({
     {
       stroke: CHART_STYLES.axes.stroke,
       grid: CHART_STYLES.axes.grid,
+      label: 'Time',
+      labelSize: 15,
+      labelGap: 2,
+      size: 35,
+      font: '12px Arial',
+      labelFont: '14px Arial',
     },
     {
       stroke: CHART_STYLES.axes.stroke,
       grid: CHART_STYLES.axes.grid,
-      label: overrides?.yLabel,
+      label: overrides?.yLabel || 'Value',
+      labelSize: 20,
+      labelGap: 5,
+      font: '12px Arial',
+      labelFont: '14px Arial',
     },
   ],
   legend: {
-    show: overrides?.showLegend ?? true,
+    show: overrides?.showLegend ?? false,
     live: false,
+  },
+  cursor: {
+    show: false, // Disable tooltips by default
   },
   ...overrides,
 });

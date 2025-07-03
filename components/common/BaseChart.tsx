@@ -31,10 +31,9 @@ export const BaseChart: React.FC<BaseChartComponentProps> = ({
       ...options,
       width: width || defaults.width,
       height: height || defaults.height,
-      title: title || options.title,
       series: options.series || [{}], // Ensure series is always an array
     } as uPlot.Options;
-  }, [options, width, height, title]);
+  }, [options, width, height]);
 
   const { chartRef } = useChartSetup({
     data,

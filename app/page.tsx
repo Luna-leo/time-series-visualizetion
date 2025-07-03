@@ -19,13 +19,19 @@ export default function UnifiedChartPage() {
 
   // Custom hooks
   const chartCount = GRID_CONFIGURATIONS[gridSize].rows * GRID_CONFIGURATIONS[gridSize].cols;
-  const chartSize = useChartDimensions({ gridSize, headerHeight: 200 });
   const { visibilityMap } = useMultiChartSeriesVisibility(chartCount);
+  const isDenseGrid = gridSize === '3x3' || gridSize === '4x4';
   
   const { charts, isLoading, isInitializing, error, loadCharts } = useChartData({
     initialGridSize: gridSize,
     initialDensity: dataDensity,
     onProgress: setLoadProgress,
+  });
+  
+  const chartSize = useChartDimensions({ 
+    gridSize,
+    hasProgressBar: isLoading && gridSize !== '1x1',
+    padding: isDenseGrid ? 8 : 16 // p-2 = 8px, p-4 = 16px
   });
 
   const { totalPoints, visiblePoints, performanceMetrics, trackLoadingPerformance } = useChartMetrics({
@@ -77,8 +83,10 @@ export default function UnifiedChartPage() {
     );
   }
 
+  const containerPadding = isDenseGrid ? 'p-2' : 'p-4';
+
   return (
-    <div className="h-screen p-4 flex flex-col overflow-hidden">
+    <div className={`h-screen ${containerPadding} flex flex-col overflow-hidden`}>
       <ChartPageHeader
         gridSize={gridSize}
         onGridSizeChange={handleGridSizeChange}

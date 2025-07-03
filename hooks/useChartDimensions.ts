@@ -1,22 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CHART_DIMENSIONS, GRID_CONFIGURATIONS } from '../constants/chartTheme';
+import { LAYOUT_CONSTANTS, CHART_SPACING } from '../constants/layoutConstants';
 import type { GridSize } from '../types/chart';
 
 interface UseChartDimensionsOptions {
   gridSize?: GridSize;
   padding?: number;
   headerHeight?: number;
-  minWidth?: number;
-  minHeight?: number;
+  hasProgressBar?: boolean;
 }
+
+// Grid-specific minimum sizes for better responsive behavior
+const GRID_MIN_SIZES: Record<GridSize, { width: number; height: number }> = {
+  '1x1': { width: 200, height: 150 },
+  '2x2': { width: 120, height: 80 },  // Reduced from 100
+  '3x3': { width: 80, height: 60 },   // Reduced from 70
+  '4x4': { width: 60, height: 40 },   // Reduced from 50
+};
 
 export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
   const {
     gridSize,
-    padding = 40,
-    headerHeight = 180,
-    minWidth = CHART_DIMENSIONS.minimum.width,
-    minHeight = CHART_DIMENSIONS.minimum.height,
+    padding = LAYOUT_CONSTANTS.container.padding,
+    headerHeight = LAYOUT_CONSTANTS.header.height,
+    hasProgressBar = false,
   } = options;
 
   const [dimensions, setDimensions] = useState(() => {
@@ -33,27 +40,49 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
 
     // For 1x1 grid, use larger dimensions
     if (gridSize === '1x1') {
-      const width = Math.min(window.innerWidth - padding, 1200);
-      const height = Math.min(window.innerHeight - headerHeight, 650);
+      const effectiveHeaderHeight = headerHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
+      const containerPadding = padding * 2;
+      const width = Math.min(
+        window.innerWidth - containerPadding - CHART_SPACING.paddingAndBorder,
+        LAYOUT_CONSTANTS.maxDimensions.width
+      );
+      const height = Math.min(
+        window.innerHeight - containerPadding - effectiveHeaderHeight - CHART_SPACING.paddingAndBorder,
+        LAYOUT_CONSTANTS.maxDimensions.height
+      );
+      const minSize = GRID_MIN_SIZES[gridSize];
       return {
-        width: Math.max(width, minWidth),
-        height: Math.max(height, minHeight),
+        width: Math.max(width, minSize.width),
+        height: Math.max(height, minSize.height),
       };
     }
 
     const grid = GRID_CONFIGURATIONS[gridSize];
-    const width = Math.floor((window.innerWidth - padding) / grid.cols) - 10;
-    const height = Math.floor((window.innerHeight - headerHeight - padding) / grid.rows) - 10;
+    const isDenseGrid = gridSize === '3x3' || gridSize === '4x4';
+    const gap = isDenseGrid ? 4 : LAYOUT_CONSTANTS.chart.gap; // gap-1 = 4px, gap-2 = 8px
+    const effectiveHeaderHeight = headerHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
+    const containerPadding = padding * 2; // padding is for one side, we need both sides
+    
+    const availableWidth = window.innerWidth - containerPadding - (grid.cols - 1) * gap;
+    const availableHeight = window.innerHeight - containerPadding - effectiveHeaderHeight - (grid.rows - 1) * gap;
+    
+    const chartPaddingAndBorder = isDenseGrid 
+      ? LAYOUT_CONSTANTS.chart.border // Only border for dense grids (no padding)
+      : CHART_SPACING.paddingAndBorder; // Border + padding for regular grids
+    
+    const width = Math.floor(availableWidth / grid.cols) - chartPaddingAndBorder;
+    const height = Math.floor(availableHeight / grid.rows) - chartPaddingAndBorder;
 
+    const minSize = GRID_MIN_SIZES[gridSize];
     return {
-      width: Math.max(width, minWidth),
-      height: Math.max(height, minHeight),
+      width: Math.max(width, minSize.width),
+      height: Math.max(height, minSize.height),
     };
   }
 
   const updateDimensions = useCallback(() => {
     setDimensions(calculateDimensions());
-  }, [gridSize, padding, headerHeight, minWidth, minHeight]);
+  }, [gridSize, padding, headerHeight, hasProgressBar]);
 
   useEffect(() => {
     // Skip if no window object (SSR)

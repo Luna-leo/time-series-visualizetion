@@ -22,10 +22,12 @@ export const ChartGrid: React.FC<ChartGridProps> = ({
 }) => {
   const isSingleChart = gridSize === '1x1';
   const gridConfig = GRID_CONFIGURATIONS[gridSize];
+  const isDenseGrid = gridSize === '3x3' || gridSize === '4x4';
+  const gridGap = isDenseGrid ? 'gap-1' : 'gap-2';
 
   return (
     <div 
-      className={`flex-1 ${isSingleChart ? 'flex items-center justify-center' : 'grid gap-2'} overflow-hidden`}
+      className={`flex-1 ${isSingleChart ? 'flex items-center justify-center' : `grid ${gridGap}`} overflow-hidden`}
       style={!isSingleChart ? {
         gridTemplateColumns: `repeat(${gridConfig.cols}, 1fr)`,
         gridTemplateRows: `repeat(${gridConfig.rows}, 1fr)`,
@@ -38,6 +40,7 @@ export const ChartGrid: React.FC<ChartGridProps> = ({
           width={chartWidth}
           height={chartHeight}
           visibleSeries={visibilityMap[chart.id]}
+          gridSize={gridSize}
         />
       ))}
     </div>
