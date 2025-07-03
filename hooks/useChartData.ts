@@ -100,9 +100,18 @@ export function useChartData({ initialGridSize, initialDensity, onProgress }: Us
         return;
       }
 
-      // Use DataStore for multi-chart mode
+      // Initialize DataStore if needed for multi-chart mode
       if (!dataStore.isInitialized()) {
-        throw new Error('DataStore not initialized');
+        setIsInitializing(true);
+        try {
+          await dataStore.initialize();
+          setIsInitializing(false);
+        } catch (error) {
+          console.error('Failed to initialize data store:', error);
+          setError(error as Error);
+          setIsInitializing(false);
+          return;
+        }
       }
 
       const newCharts: ChartMetadata[] = [];
