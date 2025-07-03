@@ -19,7 +19,7 @@ export default function UnifiedChartPage() {
 
   // Custom hooks
   const chartCount = GRID_CONFIGURATIONS[gridSize].rows * GRID_CONFIGURATIONS[gridSize].cols;
-  const chartSize = useChartDimensions({ gridSize, headerHeight: 120 });
+  const chartSize = useChartDimensions({ gridSize, headerHeight: 140 });
   const { visibilityMap } = useMultiChartSeriesVisibility(chartCount);
   
   const { charts, isLoading, isInitializing, error, loadCharts } = useChartData({

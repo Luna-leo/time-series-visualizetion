@@ -12,18 +12,23 @@ interface ChartItemProps {
   visibleSeries?: boolean[];
 }
 
-export const ChartItem = React.memo<ChartItemProps>(({ chart, width, height, visibleSeries }) => (
-  <LazyChart height={height} className="border rounded p-1">
-    <MultiSeriesTimeSeriesChart
-      data={chart.data}
-      seriesLabels={chart.labels}
-      title={chart.title}
-      yLabel=""
-      width={width}
-      height={height}
-      visibleSeries={visibleSeries}
-    />
-  </LazyChart>
-));
+export const ChartItem = React.memo<ChartItemProps>(({ chart, width, height, visibleSeries }) => {
+  // Account for title height (approx 30px) when chart has a title
+  const chartHeight = chart.title ? height - 30 : height;
+  
+  return (
+    <LazyChart height={height} className="border rounded p-1">
+      <MultiSeriesTimeSeriesChart
+        data={chart.data}
+        seriesLabels={chart.labels}
+        title={chart.title}
+        yLabel=""
+        width={width}
+        height={chartHeight}
+        visibleSeries={visibleSeries}
+      />
+    </LazyChart>
+  );
+});
 
 ChartItem.displayName = 'ChartItem';
