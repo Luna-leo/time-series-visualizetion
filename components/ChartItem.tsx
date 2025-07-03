@@ -3,6 +3,7 @@
 import React from 'react';
 import { MultiSeriesTimeSeriesChart } from './MultiSeriesTimeSeriesChart';
 import { LazyChart } from './common/LazyChart';
+import { LAYOUT_CONSTANTS } from '../constants/layoutConstants';
 import type { ChartMetadata } from '../types/chart';
 
 interface ChartItemProps {
@@ -13,8 +14,8 @@ interface ChartItemProps {
 }
 
 export const ChartItem = React.memo<ChartItemProps>(({ chart, width, height, visibleSeries }) => {
-  // Account for title height (approx 30px) when chart has a title
-  const chartHeight = chart.title ? height - 30 : height;
+  // Account for title height when chart has a title
+  const chartHeight = chart.title ? height - LAYOUT_CONSTANTS.chart.titleHeight : height;
   
   return (
     <LazyChart height={height} className="border rounded p-1">

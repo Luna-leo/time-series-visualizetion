@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CHART_DIMENSIONS, GRID_CONFIGURATIONS } from '../constants/chartTheme';
+import { LAYOUT_CONSTANTS, CHART_SPACING } from '../constants/layoutConstants';
 import type { GridSize } from '../types/chart';
 
 interface UseChartDimensionsOptions {
@@ -19,8 +20,8 @@ const GRID_MIN_SIZES: Record<GridSize, { width: number; height: number }> = {
 export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
   const {
     gridSize,
-    padding = 16, // Match Tailwind p-4
-    headerHeight = 120,
+    padding = LAYOUT_CONSTANTS.container.padding,
+    headerHeight = LAYOUT_CONSTANTS.header.height,
   } = options;
 
   const [dimensions, setDimensions] = useState(() => {
@@ -37,10 +38,14 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
 
     // For 1x1 grid, use larger dimensions
     if (gridSize === '1x1') {
-      const containerPadding = padding * 2; // Account for both sides
-      const chartPaddingAndBorder = 10; // border (2px) + padding (8px)
-      const width = Math.min(window.innerWidth - containerPadding - chartPaddingAndBorder, 1200);
-      const height = Math.min(window.innerHeight - containerPadding - headerHeight - chartPaddingAndBorder, 650);
+      const width = Math.min(
+        window.innerWidth - CHART_SPACING.containerPadding - CHART_SPACING.paddingAndBorder,
+        LAYOUT_CONSTANTS.maxDimensions.width
+      );
+      const height = Math.min(
+        window.innerHeight - CHART_SPACING.containerPadding - headerHeight - CHART_SPACING.paddingAndBorder,
+        LAYOUT_CONSTANTS.maxDimensions.height
+      );
       const minSize = GRID_MIN_SIZES[gridSize];
       return {
         width: Math.max(width, minSize.width),
@@ -49,18 +54,13 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
     }
 
     const grid = GRID_CONFIGURATIONS[gridSize];
-    // Account for container padding (16px * 2)
-    const containerPadding = padding * 2;
-    // Gap between charts (8px)
-    const gap = 8;
-    // Chart border (1px * 2) + padding (4px * 2) = 10px per chart
-    const chartPaddingAndBorder = 10;
+    const gap = LAYOUT_CONSTANTS.chart.gap;
     
-    const availableWidth = window.innerWidth - containerPadding - (grid.cols - 1) * gap;
-    const availableHeight = window.innerHeight - containerPadding - headerHeight - (grid.rows - 1) * gap;
+    const availableWidth = window.innerWidth - CHART_SPACING.containerPadding - (grid.cols - 1) * gap;
+    const availableHeight = window.innerHeight - CHART_SPACING.containerPadding - headerHeight - (grid.rows - 1) * gap;
     
-    const width = Math.floor(availableWidth / grid.cols) - chartPaddingAndBorder;
-    const height = Math.floor(availableHeight / grid.rows) - chartPaddingAndBorder;
+    const width = Math.floor(availableWidth / grid.cols) - CHART_SPACING.paddingAndBorder;
+    const height = Math.floor(availableHeight / grid.rows) - CHART_SPACING.paddingAndBorder;
 
     const minSize = GRID_MIN_SIZES[gridSize];
     return {
