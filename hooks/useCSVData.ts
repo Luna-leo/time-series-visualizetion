@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { CSVParser } from '../utils/csvParser';
 import { parseCSVWithSpecialHeader, prepareDataForParquet, partitionDataByMonth } from '../utils/csvToParquet';
 import type { ParsedCSVData, ChartConfiguration } from '../types/csv';
-import type { ChartMetadata } from '../types/chart';
+import type { ChartMetadata, MultiSeriesData } from '../types/chart';
 import type { FileSystemManager } from '../lib/fileSystem/fileSystemManager';
 import type { DuckDBManager } from '../lib/duckdb/duckdbManager';
 
@@ -38,6 +38,7 @@ interface CSVImportMetadata {
   endTime: Date;
   fileName: string;
   importedAt: Date;
+  detectedEncoding?: string;
 }
 
 interface UseCSVDataProps {
@@ -49,7 +50,7 @@ interface UseCSVDataReturn {
   csvData: ParsedCSVData | null;
   isLoading: boolean;
   error: string | null;
-  uploadCSV: (file: File, metadata?: Partial<CSVImportMetadata>) => Promise<void>;
+  uploadCSV: (file: File, metadata?: Partial<CSVImportMetadata>, encoding?: 'UTF8' | 'SJIS' | 'EUCJP' | 'JIS' | 'AUTO') => Promise<void>;
   createChart: (config: ChartConfiguration) => void;
   updateChart: (chartId: string, config: Partial<ChartConfiguration>) => void;
   deleteChart: (chartId: string) => void;
@@ -66,13 +67,14 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
   const [charts, setCharts] = useState<ChartMetadata[]>([]);
   const [importHistory, setImportHistory] = useState<CSVImportMetadata[]>([]);
 
-  const parser = new CSVParser();
-
-  const uploadCSV = useCallback(async (file: File, metadata?: Partial<CSVImportMetadata>) => {
+  const uploadCSV = useCallback(async (file: File, metadata?: Partial<CSVImportMetadata>, encoding?: 'UTF8' | 'SJIS' | 'EUCJP' | 'JIS' | 'AUTO') => {
     setIsLoading(true);
     setError(null);
 
     try {
+      // Create parser with encoding option
+      const parser = new CSVParser({ encoding: encoding || 'AUTO' });
+      
       // Parse CSV for visualization
       const parsed = await parser.parseFile(file);
       setCSVData(parsed);
@@ -86,7 +88,7 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
       if (fileSystemManager && duckdbManager && duckdbManager.isInitialized()) {
         try {
           // Parse CSV with special header for Parquet conversion
-          const parseResult = await parseCSVWithSpecialHeader(file);
+          const parseResult = await parseCSVWithSpecialHeader(file, undefined, encoding === 'AUTO' ? undefined : encoding);
           const { schema, records } = prepareDataForParquet(parseResult);
           
           // Validate metadata
@@ -104,7 +106,7 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
           for (const [yearMonth, partitionData] of partitions) {
             // Convert partition to CSV format for DuckDB
             const csvData = convertToCSV(partitionData, Object.keys(schema));
-            const csvBuffer = new TextEncoder().encode(csvData).buffer;
+            const csvBuffer = new TextEncoder().encode(csvData).buffer as ArrayBuffer;
             
             // Check if existing Parquet file exists for this partition
             let existingParquetData: ArrayBuffer | undefined;
@@ -147,6 +149,7 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
             startTime: metadata.startTime || (records.length > 0 ? records[0].timestamp : new Date()),
             endTime: metadata.endTime || (records.length > 0 ? records[records.length - 1].timestamp : new Date()),
             importedAt: new Date(),
+            detectedEncoding: parsed.detectedEncoding || encoding,
           };
           
           await fileSystemManager.saveImportMetadata(machineId, importMeta);
@@ -159,7 +162,22 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to parse CSV file');
+      let errorMessage = 'Failed to parse CSV file';
+      
+      if (err instanceof Error) {
+        errorMessage = err.message;
+        
+        // エンコーディング関連のエラーをより分かりやすくする
+        if (err.message.includes('Failed to read CSV file')) {
+          errorMessage = 'CSVファイルの読み込みに失敗しました。ファイルのエンコーディングを確認してください。';
+        } else if (err.message.includes('encoding')) {
+          errorMessage = 'ファイルのエンコーディング変換に失敗しました。別のエンコーディングを選択してください。';
+        } else if (err.message.includes('無効な文字')) {
+          errorMessage = 'ファイルに無効な文字が含まれています。エンコーディング設定を確認してください。';
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

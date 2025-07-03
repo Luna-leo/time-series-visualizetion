@@ -12,6 +12,7 @@ export interface ParsedCSVData {
   parameters: CSVParameter[];
   fileName: string;
   errors?: string[];
+  detectedEncoding?: string;
 }
 
 export interface CSVHeader {
@@ -23,7 +24,7 @@ export interface CSVHeader {
 export interface CSVParseOptions {
   dateFormat?: string;
   delimiter?: string;
-  encoding?: string;
+  encoding?: 'UTF8' | 'SJIS' | 'EUCJP' | 'JIS' | 'AUTO' | string;
   maxFileSize?: number; // in bytes
 }
 

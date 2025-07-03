@@ -20,16 +20,51 @@ export const ParameterSelector: React.FC<ParameterSelectorProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
+  // ひらがなをカタカナに変換する関数
+  const hiraganaToKatakana = (str: string): string => {
+    return str.replace(/[\u3041-\u3096]/g, (match) => {
+      const code = match.charCodeAt(0) + 0x60;
+      return String.fromCharCode(code);
+    });
+  };
+
+  // カタカナをひらがなに変換する関数
+  const katakanaToHiragana = (str: string): string => {
+    return str.replace(/[\u30A1-\u30F6]/g, (match) => {
+      const code = match.charCodeAt(0) - 0x60;
+      return String.fromCharCode(code);
+    });
+  };
+
+  // 日本語検索用の正規化関数
+  const normalizeForSearch = (str: string): string[] => {
+    const lower = str.toLowerCase();
+    const hiragana = katakanaToHiragana(str);
+    const katakana = hiraganaToKatakana(str);
+    
+    // 重複を除去して配列を返す
+    return [...new Set([lower, hiragana, katakana, str])];
+  };
+
   const filteredParameters = useMemo(() => {
     if (!searchTerm) return parameters;
     
-    const term = searchTerm.toLowerCase();
-    return parameters.filter(param => 
-      param.id.toLowerCase().includes(term) ||
-      param.name.toLowerCase().includes(term) ||
-      param.unit.toLowerCase().includes(term)
-    );
-  }, [parameters, searchTerm]);
+    const searchVariants = normalizeForSearch(searchTerm);
+    
+    return parameters.filter(param => {
+      // パラメータの各フィールドも正規化
+      const idVariants = normalizeForSearch(param.id);
+      const nameVariants = normalizeForSearch(param.name);
+      const unitVariants = normalizeForSearch(param.unit);
+      
+      // いずれかのバリアントでマッチするかチェック
+      return searchVariants.some(searchVariant => 
+        idVariants.some(v => v.includes(searchVariant)) ||
+        nameVariants.some(v => v.includes(searchVariant)) ||
+        unitVariants.some(v => v.includes(searchVariant))
+      );
+    });
+  }, [parameters, searchTerm, normalizeForSearch]);
 
   const handleToggle = (id: string) => {
     if (selectedIds.includes(id)) {

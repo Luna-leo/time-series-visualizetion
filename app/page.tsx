@@ -84,7 +84,7 @@ export default function UnifiedChartPage() {
 
   // Handle file upload with metadata
   const handleFileUpload = useCallback(async (file: File, metadata: any) => {
-    await uploadCSV(file, metadata);
+    await uploadCSV(file, metadata, metadata.encoding);
   }, [uploadCSV]);
 
   // Handle chart creation

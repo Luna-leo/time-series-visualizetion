@@ -142,6 +142,7 @@ export function DataQueryPanel({
                   </div>
                   <div className="text-xs text-gray-600">
                     {history.event && <span className="mr-2">Event: {history.event}</span>}
+                    {history.detectedEncoding && <span className="mr-2">Encoding: {history.detectedEncoding}</span>}
                     {new Date(history.importedAt).toLocaleDateString()}
                   </div>
                 </div>

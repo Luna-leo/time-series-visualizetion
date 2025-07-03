@@ -7,6 +7,7 @@ export interface CSVMetadata {
   event?: string;
   startTime?: Date;
   endTime?: Date;
+  encoding?: 'UTF8' | 'SJIS' | 'EUCJP' | 'JIS' | 'AUTO';
 }
 
 interface MetadataInputDialogProps {
@@ -26,6 +27,7 @@ export const MetadataInputDialog: React.FC<MetadataInputDialogProps> = ({
   const [event, setEvent] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [encoding, setEncoding] = useState<'UTF8' | 'SJIS' | 'EUCJP' | 'JIS' | 'AUTO'>('AUTO');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = (): boolean => {
@@ -61,6 +63,7 @@ export const MetadataInputDialog: React.FC<MetadataInputDialogProps> = ({
       event: event.trim() || undefined,
       startTime: startTime ? new Date(startTime) : undefined,
       endTime: endTime ? new Date(endTime) : undefined,
+      encoding: encoding,
     };
     
     onSubmit(metadata);
@@ -89,7 +92,7 @@ export const MetadataInputDialog: React.FC<MetadataInputDialogProps> = ({
                   className={`w-full px-3 py-2 border rounded-md ${
                     errors.plant ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  placeholder="e.g., PLANT01"
+                  placeholder="例: 工場A, PLANT01"
                 />
                 {errors.plant && (
                   <p className="text-red-500 text-xs mt-1">{errors.plant}</p>
@@ -107,12 +110,37 @@ export const MetadataInputDialog: React.FC<MetadataInputDialogProps> = ({
                   className={`w-full px-3 py-2 border rounded-md ${
                     errors.machineNo ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  placeholder="e.g., MACHINE001"
+                  placeholder="例: 設備001, MACHINE001"
                 />
                 {errors.machineNo && (
                   <p className="text-red-500 text-xs mt-1">{errors.machineNo}</p>
                 )}
               </div>
+            </div>
+          </div>
+          
+          {/* Encoding Selection */}
+          <div>
+            <h3 className="font-semibold text-sm mb-2">File Encoding</h3>
+            <p className="text-xs text-gray-500 mb-2">
+              Select the encoding of your CSV file. Use &quot;Auto Detect&quot; if unsure.
+            </p>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Encoding
+              </label>
+              <select
+                value={encoding}
+                onChange={(e) => setEncoding(e.target.value as typeof encoding)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="AUTO">自動検出 (Auto Detect)</option>
+                <option value="UTF8">UTF-8</option>
+                <option value="SJIS">Shift-JIS</option>
+                <option value="EUCJP">EUC-JP</option>
+                <option value="JIS">ISO-2022-JP (JIS)</option>
+              </select>
             </div>
           </div>
           
@@ -131,7 +159,7 @@ export const MetadataInputDialog: React.FC<MetadataInputDialogProps> = ({
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="e.g., Normal Operation"
+                  placeholder="例: 通常運転, テスト運転"
                 />
               </div>
               
@@ -142,7 +170,7 @@ export const MetadataInputDialog: React.FC<MetadataInputDialogProps> = ({
                   value={event}
                   onChange={(e) => setEvent(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="e.g., Maintenance"
+                  placeholder="例: メンテナンス, 異常停止"
                 />
               </div>
               

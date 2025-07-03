@@ -45,7 +45,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       setSelectedFile(file);
       setShowMetadataDialog(true);
     }
-  }, []);
+  }, [validateFile]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();

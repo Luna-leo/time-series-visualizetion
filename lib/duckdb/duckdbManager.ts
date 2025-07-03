@@ -194,7 +194,7 @@ export class DuckDBManager {
       await this.db.dropFile(csvName);
       await this.db.dropFile('output.parquet');
 
-      return parquetData.buffer;
+      return parquetData.buffer as ArrayBuffer;
     } catch (error) {
       console.error('Failed to convert CSV to Parquet:', error);
       throw error;

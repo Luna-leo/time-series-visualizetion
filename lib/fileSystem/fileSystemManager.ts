@@ -70,13 +70,13 @@ export class FileSystemManager {
     for await (const entry of machinesDir.values()) {
       if (entry.kind === 'directory') {
         const machineDir: MachineDirectory = {
-          handle: entry,
+          handle: entry as FileSystemDirectoryHandle,
           machineId: entry.name,
           parquetFiles: [],
         };
 
         // Scan for parquet files
-        for await (const file of entry.values()) {
+        for await (const file of (entry as FileSystemDirectoryHandle).values()) {
           if (file.kind === 'file' && file.name.endsWith('.parquet')) {
             machineDir.parquetFiles.push(file.name);
           } else if (file.name === 'metadata.json') {

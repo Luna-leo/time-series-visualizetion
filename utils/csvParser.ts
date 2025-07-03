@@ -1,5 +1,6 @@
 import Papa from 'papaparse';
 import type { ParsedCSVData, CSVParameter, CSVHeader, CSVParseOptions } from '../types/csv';
+import { readCSVFileWithEncoding, detectEncoding, isValidUTF8, SupportedEncoding } from './encoding';
 
 const DEFAULT_OPTIONS: CSVParseOptions = {
   delimiter: ',',
@@ -9,9 +10,11 @@ const DEFAULT_OPTIONS: CSVParseOptions = {
 
 export class CSVParser {
   private options: CSVParseOptions;
+  private processErrors?: string[];
 
   constructor(options: CSVParseOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.processErrors = [];
   }
 
   async parseFile(file: File): Promise<ParsedCSVData> {
@@ -20,24 +23,51 @@ export class CSVParser {
       throw new Error(`File size exceeds limit of ${this.options.maxFileSize! / 1024 / 1024}MB`);
     }
 
-    return new Promise((resolve, reject) => {
-      Papa.parse(file, {
-        delimiter: this.options.delimiter,
-        encoding: this.options.encoding,
-        skipEmptyLines: true,
-        complete: (results) => {
-          try {
-            const parsed = this.processCSVData(results.data as string[][], file.name);
-            resolve(parsed);
-          } catch (error) {
-            reject(error);
-          }
-        },
-        error: (error) => {
-          reject(new Error(`CSV parsing failed: ${error.message}`));
-        },
+    try {
+      // エンコーディングを検出して、UTF-8に変換
+      const encoding = this.options.encoding === 'AUTO' ? undefined : this.options.encoding as SupportedEncoding;
+      const csvText = await readCSVFileWithEncoding(file, encoding);
+      
+      // 変換後のテキストが有効なUTF-8かチェック
+      if (!isValidUTF8(csvText)) {
+        console.warn('変換後のテキストに無効な文字が含まれている可能性があります');
+        // エラー配列に警告を追加（後でUIに表示される）
+        if (!this.processErrors) {
+          this.processErrors = [];
+        }
+        this.processErrors.push('Warning: ファイルに文字化けの可能性がある文字が含まれています。エンコーディング設定を確認してください。');
+      }
+
+      return new Promise((resolve, reject) => {
+        Papa.parse(csvText, {
+          delimiter: this.options.delimiter,
+          skipEmptyLines: true,
+          complete: async (results) => {
+            try {
+              const parsed = this.processCSVData(results.data as string[][], file.name);
+              // processErrorsがあれば追加
+              if (this.processErrors && this.processErrors.length > 0) {
+                parsed.errors = [...(parsed.errors || []), ...this.processErrors];
+              }
+              // エンコーディング情報を追加
+              if (encoding === undefined) {
+                const buffer = await file.arrayBuffer();
+                const detectedEncoding = detectEncoding(buffer);
+                parsed.detectedEncoding = detectedEncoding;
+              }
+              resolve(parsed);
+            } catch (error) {
+              reject(error);
+            }
+          },
+          error: (error: any) => {
+            reject(new Error(`CSV parsing failed: ${error.message}`));
+          },
+        });
       });
-    });
+    } catch (error) {
+      throw new Error(`Failed to read CSV file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private processCSVData(data: string[][], fileName: string): ParsedCSVData {
