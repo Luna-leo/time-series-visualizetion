@@ -6,11 +6,14 @@ import { FileUpload } from '../components/FileUpload';
 import { ChartCreator } from '../components/ChartCreator';
 import { ChartGrid } from '../components/ChartGrid';
 import { ProgressBar } from '../components/common/ProgressBar';
+import { StorageSetup } from '../components/StorageSetup';
+import { DataQueryPanel } from '../components/DataQueryPanel';
 import { useChartDimensions } from '../hooks/useChartDimensions';
 import { useMultiChartSeriesVisibility } from '../hooks/useSeriesVisibility';
 import { useCSVData } from '../hooks/useCSVData';
 import { useChartMetrics } from '../hooks/useChartMetrics';
 import { usePagination } from '../hooks/usePagination';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import { GRID_CONFIGURATIONS } from '../constants/chartTheme';
 import type { GridSize } from '../types/chart';
 
@@ -18,9 +21,21 @@ export default function UnifiedChartPage() {
   const [gridSize, setGridSize] = useState<GridSize>('2x2');
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState<number | undefined>(undefined);
   const [showChartCreator, setShowChartCreator] = useState(false);
+  const [showDataQuery, setShowDataQuery] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
 
-  // Load CSV data
+  // Local storage management
+  const { 
+    isInitialized,
+    isLoading: isStorageLoading,
+    error: storageError,
+    fileSystemManager,
+    duckdbManager,
+    setupStorage,
+    resetStorage
+  } = useLocalStorage();
+
+  // Load CSV data with storage managers
   const { 
     csvData, 
     charts, 
@@ -28,8 +43,12 @@ export default function UnifiedChartPage() {
     error, 
     uploadCSV, 
     createChart,
-    clearData 
-  } = useCSVData();
+    clearData,
+    importHistory 
+  } = useCSVData({
+    fileSystemManager,
+    duckdbManager
+  });
 
   // Custom hooks
   const chartCount = GRID_CONFIGURATIONS[gridSize].rows * GRID_CONFIGURATIONS[gridSize].cols;
@@ -72,6 +91,24 @@ export default function UnifiedChartPage() {
   const handleCreateChart = useCallback((config: any) => {
     createChart(config);
     setShowChartCreator(false);
+  }, [createChart]);
+
+  // Handle chart creation from query
+  const handleCreateChartFromQuery = useCallback((chartData: any) => {
+    // Transform query data to chart format
+    const config = {
+      id: `query_${Date.now()}`,
+      title: chartData.title,
+      parameterIds: chartData.parameters,
+      queryData: {
+        data: chartData.data,
+        parameters: chartData.parameters,
+      },
+    };
+    
+    // Create a chart with the queried data
+    createChart(config);
+    setShowDataQuery(false);
   }, [createChart]);
 
   // Measure header height dynamically
@@ -121,6 +158,11 @@ export default function UnifiedChartPage() {
 
   const containerPadding = isDenseGrid ? 'p-2' : 'p-4';
 
+  // Show storage setup if not initialized
+  if (!isInitialized) {
+    return <StorageSetup onSetupComplete={setupStorage} />;
+  }
+
   return (
     <div className={`h-screen ${containerPadding} flex flex-col overflow-hidden`}>
       <div ref={headerRef}>
@@ -142,18 +184,42 @@ export default function UnifiedChartPage() {
           csvData={csvData}
           onCreateChart={() => setShowChartCreator(true)}
           onClearData={clearData}
+          onQueryData={duckdbManager && fileSystemManager ? () => setShowDataQuery(true) : undefined}
         />
       </div>
       
       
-      {!csvData ? (
+      {!csvData && charts.length === 0 ? (
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="w-full max-w-2xl">
-            <h2 className="text-2xl font-bold text-center mb-8">Upload CSV File to Visualize Data</h2>
-            <FileUpload onFileSelect={handleFileUpload} disabled={isLoading} />
+            <h2 className="text-2xl font-bold text-center mb-8">Get Started with Time Series Visualization</h2>
+            
+            <div className="space-y-6">
+              {/* Upload CSV Section */}
+              <div className="border rounded-lg p-6">
+                <h3 className="text-lg font-semibold mb-4">Upload New CSV File</h3>
+                <FileUpload onFileSelect={handleFileUpload} disabled={isLoading} />
+              </div>
+              
+              {/* Query Stored Data Section */}
+              {duckdbManager && fileSystemManager && (
+                <div className="border rounded-lg p-6">
+                  <h3 className="text-lg font-semibold mb-4">Query Stored Data</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Access previously imported data stored as Parquet files
+                  </p>
+                  <button
+                    onClick={() => setShowDataQuery(true)}
+                    className="w-full px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
+                  >
+                    Open Data Query Panel
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      ) : charts.length === 0 ? (
+      ) : csvData && charts.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <p className="text-lg text-gray-600 mb-4">CSV file loaded successfully!</p>
@@ -182,6 +248,29 @@ export default function UnifiedChartPage() {
           onCreateChart={handleCreateChart}
           onCancel={() => setShowChartCreator(false)}
         />
+      )}
+      
+      {showDataQuery && duckdbManager && fileSystemManager && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b px-4 py-3 flex justify-between items-center">
+              <h2 className="text-xl font-semibold">Query Stored Data</h2>
+              <button
+                onClick={() => setShowDataQuery(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4">
+              <DataQueryPanel
+                duckdbManager={duckdbManager}
+                fileSystemManager={fileSystemManager}
+                onCreateChart={handleCreateChartFromQuery}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

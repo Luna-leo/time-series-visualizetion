@@ -26,6 +26,7 @@ interface ChartPageHeaderProps {
   csvData: ParsedCSVData | null;
   onCreateChart: () => void;
   onClearData: () => void;
+  onQueryData?: () => void;
 }
 
 export const ChartPageHeader: React.FC<ChartPageHeaderProps> = ({
@@ -46,6 +47,7 @@ export const ChartPageHeader: React.FC<ChartPageHeaderProps> = ({
   csvData,
   onCreateChart,
   onClearData,
+  onQueryData,
 }) => {
   const isSingleChart = gridSize === '1x1';
   const title = csvData ? 'CSV Data Visualization' : 'Time Series Visualization';
@@ -54,22 +56,32 @@ export const ChartPageHeader: React.FC<ChartPageHeaderProps> = ({
     <div className="mb-2">
       <div className="flex justify-between items-center mb-2">
         <h1 className="text-xl font-bold">{title}</h1>
-        {csvData && (
-          <div className="flex gap-2">
+        <div className="flex gap-2">
+          {csvData && (
+            <>
+              <button
+                onClick={onCreateChart}
+                className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Create Chart
+              </button>
+              <button
+                onClick={onClearData}
+                className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+              >
+                Clear Data
+              </button>
+            </>
+          )}
+          {onQueryData && (
             <button
-              onClick={onCreateChart}
-              className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+              onClick={onQueryData}
+              className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
             >
-              Create Chart
+              Query Data
             </button>
-            <button
-              onClick={onClearData}
-              className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
-            >
-              Clear Data
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       
       {csvData && chartCount > 0 && (

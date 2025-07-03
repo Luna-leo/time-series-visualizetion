@@ -9,9 +9,11 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.29.1-dev132.0",
     "@types/papaparse": "^5.3.16",
     "next": "15.3.4",
     "papaparse": "^5.5.3",
+    "parquet-wasm": "^0.6.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "uplot": "^1.6.32"
