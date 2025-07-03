@@ -17,6 +17,8 @@ export const getDefaultChartOptions = (overrides?: Partial<ChartOptions>) => ({
       label: 'Time',
       labelSize: 20,
       labelGap: 5,
+      font: '12px Arial',
+      labelFont: '14px Arial',
     },
     {
       stroke: CHART_STYLES.axes.stroke,
@@ -24,6 +26,8 @@ export const getDefaultChartOptions = (overrides?: Partial<ChartOptions>) => ({
       label: overrides?.yLabel || 'Value',
       labelSize: 20,
       labelGap: 5,
+      font: '12px Arial',
+      labelFont: '14px Arial',
     },
   ],
   legend: {

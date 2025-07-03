@@ -11,9 +11,9 @@ export const CHART_COLORS = [
 // Chart styling defaults
 export const CHART_STYLES = {
   axes: {
-    stroke: '#ccc',
+    stroke: '#333',
     grid: {
-      stroke: '#eee',
+      stroke: '#d0d0d0',
       width: 1,
     },
   },
