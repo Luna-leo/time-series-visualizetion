@@ -2,27 +2,38 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ChartPageHeader } from '../components/ChartPageHeader';
+import { FileUpload } from '../components/FileUpload';
+import { ChartCreator } from '../components/ChartCreator';
 import { ChartGrid } from '../components/ChartGrid';
 import { ProgressBar } from '../components/common/ProgressBar';
 import { useChartDimensions } from '../hooks/useChartDimensions';
 import { useMultiChartSeriesVisibility } from '../hooks/useSeriesVisibility';
-import { useChartData } from '../hooks/useChartData';
+import { useCSVData } from '../hooks/useCSVData';
 import { useChartMetrics } from '../hooks/useChartMetrics';
 import { usePagination } from '../hooks/usePagination';
-import { GRID_CONFIGURATIONS, TOTAL_CHARTS } from '../constants/chartTheme';
-import type { GridSize, DataDensity } from '../types/chart';
+import { GRID_CONFIGURATIONS } from '../constants/chartTheme';
+import type { GridSize } from '../types/chart';
 
 export default function UnifiedChartPage() {
-  const [gridSize, setGridSize] = useState<GridSize>('1x1');
-  const [dataDensity, setDataDensity] = useState<DataDensity>('medium');
-  const [loadProgress, setLoadProgress] = useState(0);
-  const [loadStartTime, setLoadStartTime] = useState(0);
+  const [gridSize, setGridSize] = useState<GridSize>('2x2');
   const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState<number | undefined>(undefined);
+  const [showChartCreator, setShowChartCreator] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
+
+  // Load CSV data
+  const { 
+    csvData, 
+    charts, 
+    isLoading, 
+    error, 
+    uploadCSV, 
+    createChart,
+    clearData 
+  } = useCSVData();
 
   // Custom hooks
   const chartCount = GRID_CONFIGURATIONS[gridSize].rows * GRID_CONFIGURATIONS[gridSize].cols;
-  const { visibilityMap } = useMultiChartSeriesVisibility(TOTAL_CHARTS); // Always track all charts
+  const { visibilityMap } = useMultiChartSeriesVisibility(charts.length || 1); // Dynamic based on loaded charts
   const isDenseGrid = gridSize === '1x1' || gridSize === '3x3' || gridSize === '4x4';
   
   // Pagination
@@ -35,13 +46,7 @@ export default function UnifiedChartPage() {
     nextPage,
     prevPage,
     getPaginatedItems,
-  } = usePagination({ gridSize });
-  
-  const { charts, isLoading, isInitializing, error, loadCharts } = useChartData({
-    initialGridSize: gridSize,
-    initialDensity: dataDensity,
-    onProgress: setLoadProgress,
-  });
+  } = usePagination({ gridSize, totalItems: charts.length });
   
   const chartSize = useChartDimensions({ 
     gridSize,
@@ -53,21 +58,21 @@ export default function UnifiedChartPage() {
   // Get paginated charts
   const paginatedCharts = getPaginatedItems(charts);
   
-  const { totalPoints, visiblePoints, performanceMetrics, trackLoadingPerformance } = useChartMetrics({
+  const { totalPoints, visiblePoints, performanceMetrics } = useChartMetrics({
     charts: paginatedCharts,
     visibilityMap,
   });
 
-  // Load charts on mount and when grid size or density changes
-  useEffect(() => {
-    if (!isInitializing) {
-      const startTime = performance.now();
-      setLoadStartTime(startTime);
-      loadCharts(gridSize, dataDensity).then(() => {
-        trackLoadingPerformance(startTime, chartCount);
-      });
-    }
-  }, [gridSize, dataDensity, isInitializing]);
+  // Handle file upload
+  const handleFileUpload = useCallback(async (file: File) => {
+    await uploadCSV(file);
+  }, [uploadCSV]);
+
+  // Handle chart creation
+  const handleCreateChart = useCallback((config: any) => {
+    createChart(config);
+    setShowChartCreator(false);
+  }, [createChart]);
 
   // Measure header height dynamically
   useEffect(() => {
@@ -100,21 +105,7 @@ export default function UnifiedChartPage() {
     setGridSize(newSize);
   }, []);
 
-  const handleDensityChange = useCallback((newDensity: DataDensity) => {
-    setDataDensity(newDensity);
-  }, []);
 
-  // Render loading state
-  if (isInitializing) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-2xl mb-4">Initializing Data Store...</div>
-          <div className="text-sm text-gray-600">Simulating database setup</div>
-        </div>
-      </div>
-    );
-  }
 
   // Render error state
   if (error) {
@@ -136,8 +127,6 @@ export default function UnifiedChartPage() {
         <ChartPageHeader
           gridSize={gridSize}
           onGridSizeChange={handleGridSizeChange}
-          dataDensity={dataDensity}
-          onDensityChange={handleDensityChange}
           disabled={isLoading}
           totalPoints={totalPoints}
           visiblePoints={visiblePoints}
@@ -150,21 +139,32 @@ export default function UnifiedChartPage() {
           onPrevPage={prevPage}
           hasNextPage={hasNextPage}
           hasPrevPage={hasPrevPage}
+          csvData={csvData}
+          onCreateChart={() => setShowChartCreator(true)}
+          onClearData={clearData}
         />
       </div>
       
-      {isLoading && (
-        <div className="mb-2">
-          <ProgressBar 
-            progress={loadProgress}
-            message="Loading 32 charts..."
-          />
-        </div>
-      )}
       
-      {!isLoading && charts.length === 0 ? (
+      {!csvData ? (
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="w-full max-w-2xl">
+            <h2 className="text-2xl font-bold text-center mb-8">Upload CSV File to Visualize Data</h2>
+            <FileUpload onFileSelect={handleFileUpload} disabled={isLoading} />
+          </div>
+        </div>
+      ) : charts.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-lg text-gray-600">Select a grid size to load charts</div>
+          <div className="text-center">
+            <p className="text-lg text-gray-600 mb-4">CSV file loaded successfully!</p>
+            <p className="text-sm text-gray-500 mb-6">{csvData.parameters.length} parameters found</p>
+            <button
+              onClick={() => setShowChartCreator(true)}
+              className="px-6 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+            >
+              Create Chart
+            </button>
+          </div>
         </div>
       ) : (
         <ChartGrid
@@ -173,6 +173,14 @@ export default function UnifiedChartPage() {
           chartWidth={chartSize.width}
           chartHeight={chartSize.height}
           visibilityMap={visibilityMap}
+        />
+      )}
+      
+      {showChartCreator && csvData && (
+        <ChartCreator
+          parameters={csvData.parameters}
+          onCreateChart={handleCreateChart}
+          onCancel={() => setShowChartCreator(false)}
         />
       )}
     </div>

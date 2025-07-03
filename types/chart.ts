@@ -43,9 +43,6 @@ export interface ChartOptions {
 // Grid size options
 export type GridSize = '1x1' | '2x2' | '3x3' | '4x4';
 
-// Data density options
-export type DataDensity = 'full' | 'medium' | 'low';
-
 // Grid dimensions
 export interface GridDimensions {
   rows: number;

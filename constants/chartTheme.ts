@@ -59,15 +59,6 @@ export const GRID_CONFIGURATIONS = {
   '4x4': { rows: 4, cols: 4 },
 } as const;
 
-// Total number of charts for pagination
-export const TOTAL_CHARTS = 32;
-
-// Data density multipliers
-export const DENSITY_MULTIPLIERS = {
-  'full': 1,      // 1 second intervals
-  'medium': 2,    // 2 second intervals  
-  'low': 5,       // 5 second intervals
-} as const;
 
 // Animation and transition durations
 export const TRANSITIONS = {
