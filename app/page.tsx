@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ChartPageHeader } from '../components/ChartPageHeader';
 import { ChartGrid } from '../components/ChartGrid';
 import { ProgressBar } from '../components/common/ProgressBar';
@@ -17,6 +17,8 @@ export default function UnifiedChartPage() {
   const [dataDensity, setDataDensity] = useState<DataDensity>('medium');
   const [loadProgress, setLoadProgress] = useState(0);
   const [loadStartTime, setLoadStartTime] = useState(0);
+  const [measuredHeaderHeight, setMeasuredHeaderHeight] = useState<number | undefined>(undefined);
+  const headerRef = useRef<HTMLDivElement>(null);
 
   // Custom hooks
   const chartCount = GRID_CONFIGURATIONS[gridSize].rows * GRID_CONFIGURATIONS[gridSize].cols;
@@ -44,7 +46,8 @@ export default function UnifiedChartPage() {
   const chartSize = useChartDimensions({ 
     gridSize,
     hasProgressBar: isLoading,
-    padding: isDenseGrid ? 8 : 16 // p-2 = 8px, p-4 = 16px
+    padding: isDenseGrid ? 8 : 16, // p-2 = 8px, p-4 = 16px
+    headerHeight: measuredHeaderHeight
   });
 
   // Get paginated charts
@@ -65,6 +68,32 @@ export default function UnifiedChartPage() {
       });
     }
   }, [gridSize, dataDensity, isInitializing]);
+
+  // Measure header height dynamically
+  useEffect(() => {
+    const measureHeader = () => {
+      if (headerRef.current) {
+        const headerElement = headerRef.current;
+        const rect = headerElement.getBoundingClientRect();
+        const computedStyle = window.getComputedStyle(headerElement);
+        const marginBottom = parseFloat(computedStyle.marginBottom) || 0;
+        const totalHeight = rect.height + marginBottom;
+        setMeasuredHeaderHeight(totalHeight);
+      }
+    };
+
+    measureHeader();
+    // Re-measure on resize
+    window.addEventListener('resize', measureHeader);
+    
+    // Also measure after a short delay to catch any async rendering
+    const timeoutId = setTimeout(measureHeader, 100);
+
+    return () => {
+      window.removeEventListener('resize', measureHeader);
+      clearTimeout(timeoutId);
+    };
+  }, [gridSize, totalPages]); // Re-measure when grid size or pagination changes
 
   // Handle control changes
   const handleGridSizeChange = useCallback((newSize: GridSize) => {
@@ -103,24 +132,26 @@ export default function UnifiedChartPage() {
 
   return (
     <div className={`h-screen ${containerPadding} flex flex-col overflow-hidden`}>
-      <ChartPageHeader
-        gridSize={gridSize}
-        onGridSizeChange={handleGridSizeChange}
-        dataDensity={dataDensity}
-        onDensityChange={handleDensityChange}
-        disabled={isLoading}
-        totalPoints={totalPoints}
-        visiblePoints={visiblePoints}
-        chartCount={charts.length}
-        performanceMetrics={performanceMetrics}
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={goToPage}
-        onNextPage={nextPage}
-        onPrevPage={prevPage}
-        hasNextPage={hasNextPage}
-        hasPrevPage={hasPrevPage}
-      />
+      <div ref={headerRef}>
+        <ChartPageHeader
+          gridSize={gridSize}
+          onGridSizeChange={handleGridSizeChange}
+          dataDensity={dataDensity}
+          onDensityChange={handleDensityChange}
+          disabled={isLoading}
+          totalPoints={totalPoints}
+          visiblePoints={visiblePoints}
+          chartCount={charts.length}
+          performanceMetrics={performanceMetrics}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={goToPage}
+          onNextPage={nextPage}
+          onPrevPage={prevPage}
+          hasNextPage={hasNextPage}
+          hasPrevPage={hasPrevPage}
+        />
+      </div>
       
       {isLoading && (
         <div className="mb-2">
