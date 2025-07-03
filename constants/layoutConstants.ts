@@ -4,7 +4,7 @@ export const LAYOUT_CONSTANTS = {
     padding: 16, // Tailwind p-4
   },
   header: {
-    height: 140, // Total height of page header including title, controls, and stats
+    height: 100, // Total height of page header including title, controls, and stats
     marginBottom: 8, // Tailwind mb-2
   },
   chart: {
@@ -12,10 +12,6 @@ export const LAYOUT_CONSTANTS = {
     border: 2,       // 1px × 2 sides
     padding: 8,      // 4px × 2 sides (Tailwind p-1)
     gap: 8,          // Tailwind gap-2 between charts in grid
-  },
-  maxDimensions: {
-    width: 1200,
-    height: 650,
   },
   progressBar: {
     height: 40, // Including mb-2 margin
