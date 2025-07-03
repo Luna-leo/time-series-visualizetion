@@ -8,7 +8,8 @@ import { useChartDimensions } from '../hooks/useChartDimensions';
 import { useMultiChartSeriesVisibility } from '../hooks/useSeriesVisibility';
 import { useChartData } from '../hooks/useChartData';
 import { useChartMetrics } from '../hooks/useChartMetrics';
-import { GRID_CONFIGURATIONS } from '../constants/chartTheme';
+import { usePagination } from '../hooks/usePagination';
+import { GRID_CONFIGURATIONS, TOTAL_CHARTS } from '../constants/chartTheme';
 import type { GridSize, DataDensity } from '../types/chart';
 
 export default function UnifiedChartPage() {
@@ -19,8 +20,20 @@ export default function UnifiedChartPage() {
 
   // Custom hooks
   const chartCount = GRID_CONFIGURATIONS[gridSize].rows * GRID_CONFIGURATIONS[gridSize].cols;
-  const { visibilityMap } = useMultiChartSeriesVisibility(chartCount);
+  const { visibilityMap } = useMultiChartSeriesVisibility(TOTAL_CHARTS); // Always track all charts
   const isDenseGrid = gridSize === '1x1' || gridSize === '3x3' || gridSize === '4x4';
+  
+  // Pagination
+  const {
+    currentPage,
+    totalPages,
+    hasNextPage,
+    hasPrevPage,
+    goToPage,
+    nextPage,
+    prevPage,
+    getPaginatedItems,
+  } = usePagination({ gridSize });
   
   const { charts, isLoading, isInitializing, error, loadCharts } = useChartData({
     initialGridSize: gridSize,
@@ -30,12 +43,15 @@ export default function UnifiedChartPage() {
   
   const chartSize = useChartDimensions({ 
     gridSize,
-    hasProgressBar: isLoading && gridSize !== '1x1',
+    hasProgressBar: isLoading,
     padding: isDenseGrid ? 8 : 16 // p-2 = 8px, p-4 = 16px
   });
 
+  // Get paginated charts
+  const paginatedCharts = getPaginatedItems(charts);
+  
   const { totalPoints, visiblePoints, performanceMetrics, trackLoadingPerformance } = useChartMetrics({
-    charts,
+    charts: paginatedCharts,
     visibilityMap,
   });
 
@@ -95,15 +111,22 @@ export default function UnifiedChartPage() {
         disabled={isLoading}
         totalPoints={totalPoints}
         visiblePoints={visiblePoints}
-        chartCount={chartCount}
+        chartCount={charts.length}
         performanceMetrics={performanceMetrics}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={goToPage}
+        onNextPage={nextPage}
+        onPrevPage={prevPage}
+        hasNextPage={hasNextPage}
+        hasPrevPage={hasPrevPage}
       />
       
-      {isLoading && gridSize !== '1x1' && (
+      {isLoading && (
         <div className="mb-2">
           <ProgressBar 
             progress={loadProgress}
-            message="Loading charts..."
+            message="Loading 32 charts..."
           />
         </div>
       )}
@@ -114,7 +137,7 @@ export default function UnifiedChartPage() {
         </div>
       ) : (
         <ChartGrid
-          charts={charts}
+          charts={paginatedCharts}
           gridSize={gridSize}
           chartWidth={chartSize.width}
           chartHeight={chartSize.height}
