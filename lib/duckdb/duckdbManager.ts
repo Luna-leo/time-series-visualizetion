@@ -139,10 +139,11 @@ export class DuckDBManager {
       await this.db.registerFileBuffer(csvName, new Uint8Array(csvData));
 
       let finalQuery: string;
+      let existingName: string | undefined;
 
       if (existingParquetData) {
         // Register existing Parquet file
-        const existingName = `existing_parquet_${Date.now()}`;
+        existingName = `existing_parquet_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         await this.db.registerFileBuffer(existingName, new Uint8Array(existingParquetData));
 
         // Merge with existing data and remove duplicates based on timestamp
@@ -168,9 +169,6 @@ export class DuckDBManager {
             ORDER BY timestamp, 1
           ) TO 'output.parquet' (FORMAT PARQUET)
         `;
-
-        // Cleanup existing file reference
-        await this.db.dropFile(existingName);
       } else {
         // No existing data, just convert CSV
         finalQuery = `
@@ -193,6 +191,16 @@ export class DuckDBManager {
       // Cleanup
       await this.db.dropFile(csvName);
       await this.db.dropFile('output.parquet');
+      
+      // Cleanup existing file reference if it was used
+      if (existingName) {
+        try {
+          await this.db.dropFile(existingName);
+        } catch (cleanupError) {
+          // Ignore cleanup errors
+          console.warn('Failed to cleanup temporary file:', cleanupError);
+        }
+      }
 
       return parquetData.buffer as ArrayBuffer;
     } catch (error) {
