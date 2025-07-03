@@ -50,9 +50,6 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
 
   return (
     <div className={`chart-wrapper ${className}`}>
-      {title && (
-        <h3 className="text-lg font-semibold mb-2 text-center">{title}</h3>
-      )}
       {children}
     </div>
   );

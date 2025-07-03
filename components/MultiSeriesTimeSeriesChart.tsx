@@ -24,7 +24,6 @@ const MultiSeriesTimeSeriesChartComponent: React.FC<MultiSeriesTimeSeriesChartPr
   seriesLabels,
   width,
   height,
-  title,
   yLabel = '',
   visibleSeries,
   loading = false,
@@ -84,23 +83,30 @@ const MultiSeriesTimeSeriesChartComponent: React.FC<MultiSeriesTimeSeriesChartPr
         {
           stroke: CHART_STYLES.axes.stroke,
           grid: CHART_STYLES.axes.grid,
+          label: 'Time',
+          labelSize: 20,
+          labelGap: 5,
         },
         {
           stroke: CHART_STYLES.axes.stroke,
           grid: CHART_STYLES.axes.grid,
-          label: yLabel,
+          label: yLabel || 'Value',
+          labelSize: 20,
+          labelGap: 5,
         },
       ],
       legend: {
-        show: !!(width && width > 400), // Only show legend on larger charts
+        show: false, // Disable legend
         live: false,
+      },
+      cursor: {
+        show: false, // Disable tooltips
       },
     };
   }, [data.length, seriesLabels, yLabel, visibleSeries, pointSize, showLines, width]);
 
   return (
     <ChartWrapper
-      title={title}
       loading={loading}
       error={error}
       className={className}
@@ -122,7 +128,6 @@ export const MultiSeriesTimeSeriesChart = React.memo(MultiSeriesTimeSeriesChartC
     prevProps.data === nextProps.data &&
     prevProps.width === nextProps.width &&
     prevProps.height === nextProps.height &&
-    prevProps.title === nextProps.title &&
     prevProps.yLabel === nextProps.yLabel &&
     prevProps.loading === nextProps.loading &&
     prevProps.error === nextProps.error &&

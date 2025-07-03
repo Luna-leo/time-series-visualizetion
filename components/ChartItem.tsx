@@ -14,18 +14,14 @@ interface ChartItemProps {
 }
 
 export const ChartItem = React.memo<ChartItemProps>(({ chart, width, height, visibleSeries }) => {
-  // Account for title height when chart has a title
-  const chartHeight = chart.title ? height - LAYOUT_CONSTANTS.chart.titleHeight : height;
-  
   return (
     <LazyChart height={height} className="border rounded p-1">
       <MultiSeriesTimeSeriesChart
         data={chart.data}
         seriesLabels={chart.labels}
-        title={chart.title}
-        yLabel=""
+        yLabel="Value"
         width={width}
-        height={chartHeight}
+        height={height}
         visibleSeries={visibleSeries}
       />
     </LazyChart>
