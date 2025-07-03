@@ -22,9 +22,12 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
   const {
     gridSize,
     padding = LAYOUT_CONSTANTS.container.padding,
-    headerHeight = LAYOUT_CONSTANTS.header.height,
+    headerHeight,
     hasProgressBar = false,
   } = options;
+
+  // Use measured height if available, otherwise fall back to constant
+  const effectiveHeaderHeight = headerHeight !== undefined ? headerHeight : LAYOUT_CONSTANTS.header.height;
 
   const [dimensions, setDimensions] = useState(() => {
     if (typeof window === 'undefined') {
@@ -40,10 +43,10 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
 
     // For 1x1 grid, use larger dimensions
     if (gridSize === '1x1') {
-      const effectiveHeaderHeight = headerHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
+      const totalHeaderHeight = effectiveHeaderHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
       const containerPadding = padding * 2;
       const width = window.innerWidth - containerPadding - CHART_SPACING.paddingAndBorder;
-      const height = window.innerHeight - containerPadding - effectiveHeaderHeight - CHART_SPACING.paddingAndBorder;
+      const height = window.innerHeight - containerPadding - totalHeaderHeight - CHART_SPACING.paddingAndBorder;
       const minSize = GRID_MIN_SIZES[gridSize];
       return {
         width: Math.max(width, minSize.width),
@@ -54,11 +57,11 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
     const grid = GRID_CONFIGURATIONS[gridSize];
     const isDenseGrid = gridSize === '3x3' || gridSize === '4x4';
     const gap = isDenseGrid ? 4 : LAYOUT_CONSTANTS.chart.gap; // gap-1 = 4px, gap-2 = 8px
-    const effectiveHeaderHeight = headerHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
+    const totalHeaderHeight = effectiveHeaderHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
     const containerPadding = padding * 2; // padding is for one side, we need both sides
     
     const availableWidth = window.innerWidth - containerPadding - (grid.cols - 1) * gap;
-    const availableHeight = window.innerHeight - containerPadding - effectiveHeaderHeight - (grid.rows - 1) * gap;
+    const availableHeight = window.innerHeight - containerPadding - totalHeaderHeight - (grid.rows - 1) * gap;
     
     const chartPaddingAndBorder = isDenseGrid 
       ? LAYOUT_CONSTANTS.chart.border // Only border for dense grids (no padding)
@@ -76,7 +79,7 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
 
   const updateDimensions = useCallback(() => {
     setDimensions(calculateDimensions());
-  }, [gridSize, padding, headerHeight, hasProgressBar]);
+  }, [gridSize, padding, effectiveHeaderHeight, hasProgressBar]);
 
   useEffect(() => {
     // Skip if no window object (SSR)

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import DataStore, { SENSOR_TYPES, FETCH_CONFIG } from '../lib/dataStore';
-import { GRID_CONFIGURATIONS } from '../constants/chartTheme';
+import { TOTAL_CHARTS } from '../constants/chartTheme';
 import type { GridSize, DataDensity, ChartMetadata } from '../types/chart';
 
 // Simple data generation for 1x1 grid
@@ -79,23 +79,30 @@ export function useChartData({ initialGridSize, initialDensity, onProgress }: Us
     setError(null);
     onProgress?.(0);
     
-    const count = GRID_CONFIGURATIONS[size].rows * GRID_CONFIGURATIONS[size].cols;
+    const count = TOTAL_CHARTS;
     
     try {
-      // Use simple data generation for 1x1 grid
+      // Generate all charts for any grid size (including 1x1 for pagination)
+      // For 1x1, we'll use simple data generation for all 32 charts
       if (size === '1x1') {
-        const data = generateSimpleChartData();
-        const labels = ['Sensor 1', 'Sensor 2', 'Sensor 3', 'Sensor 4', 'Sensor 5', 'Sensor 6'];
+        const allCharts: ChartMetadata[] = [];
+        for (let i = 0; i < count; i++) {
+          const data = generateSimpleChartData();
+          const sensorType = SENSOR_TYPES[i % SENSOR_TYPES.length];
+          const labels = Array.from({ length: 6 }, (_, j) => `${sensorType.name} ${j + 1}`);
+          
+          allCharts.push({
+            id: i,
+            data,
+            labels,
+            title: `${sensorType.name} ${Math.floor(i / SENSOR_TYPES.length) + 1}`,
+            sensorType: sensorType.name,
+          });
+          
+          onProgress?.((i + 1) / count * 100);
+        }
         
-        setCharts([{
-          id: 0,
-          data,
-          labels,
-          title: 'Temperature Sensors',
-          sensorType: 'Temperature',
-        }]);
-        
-        onProgress?.(100);
+        setCharts(allCharts);
         setIsLoading(false);
         return;
       }
