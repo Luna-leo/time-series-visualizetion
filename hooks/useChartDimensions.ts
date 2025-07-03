@@ -31,6 +31,16 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
       return CHART_DIMENSIONS.default;
     }
 
+    // For 1x1 grid, use larger dimensions
+    if (gridSize === '1x1') {
+      const width = Math.min(window.innerWidth - padding, 1200);
+      const height = Math.min(window.innerHeight - headerHeight, 650);
+      return {
+        width: Math.max(width, minWidth),
+        height: Math.max(height, minHeight),
+      };
+    }
+
     const grid = GRID_CONFIGURATIONS[gridSize];
     const width = Math.floor((window.innerWidth - padding) / grid.cols) - 10;
     const height = Math.floor((window.innerHeight - headerHeight - padding) / grid.rows) - 10;
