@@ -13,7 +13,7 @@ interface ChartItemProps {
 }
 
 export const ChartItem = React.memo<ChartItemProps>(({ chart, width, height, visibleSeries }) => (
-  <LazyChart height={height} className="border rounded p-1 overflow-hidden">
+  <LazyChart height={height} className="border rounded p-1">
     <MultiSeriesTimeSeriesChart
       data={chart.data}
       seriesLabels={chart.labels}
