@@ -89,8 +89,13 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
           const parseResult = await parseCSVWithSpecialHeader(file);
           const { schema, records } = prepareDataForParquet(parseResult);
           
-          // Determine machine ID from metadata or generate one
-          const machineId = metadata?.machineNo || `machine_${Date.now()}`;
+          // Validate metadata
+          if (!metadata?.plant || !metadata?.machineNo) {
+            throw new Error('Plant and Machine No are required');
+          }
+          
+          // Create machine ID from plant and machine_no
+          const machineId = `${metadata.plant}_${metadata.machineNo}`;
           
           // Partition data by month
           const partitions = partitionDataByMonth(records);
@@ -101,11 +106,26 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
             const csvData = convertToCSV(partitionData, Object.keys(schema));
             const csvBuffer = new TextEncoder().encode(csvData).buffer;
             
-            // Convert CSV to Parquet using DuckDB
-            const parquetData = await duckdbManager.csvToParquet(
+            // Check if existing Parquet file exists for this partition
+            let existingParquetData: ArrayBuffer | undefined;
+            const existingFiles = fileSystemManager.getParquetFiles(machineId);
+            if (existingFiles.includes(`${yearMonth}.parquet`)) {
+              try {
+                existingParquetData = await fileSystemManager.readParquetFile(
+                  machineId,
+                  `${yearMonth}.parquet`
+                );
+              } catch (err) {
+                console.warn(`Could not read existing file for ${yearMonth}:`, err);
+              }
+            }
+            
+            // Convert CSV to Parquet with merge if existing data exists
+            const parquetData = await duckdbManager.csvToParquetWithMerge(
               csvBuffer,
               machineId,
               yearMonth,
+              existingParquetData,
               0 // No skip rows since we're providing clean CSV
             );
             
@@ -119,11 +139,13 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
           
           // Save import metadata
           const importMeta: CSVImportMetadata = {
-            ...metadata,
-            machineNo: machineId,
+            plant: metadata.plant,
+            machineNo: metadata.machineNo,
+            label: metadata.label,
+            event: metadata.event,
             fileName: file.name,
-            startTime: records.length > 0 ? records[0].timestamp : new Date(),
-            endTime: records.length > 0 ? records[records.length - 1].timestamp : new Date(),
+            startTime: metadata.startTime || (records.length > 0 ? records[0].timestamp : new Date()),
+            endTime: metadata.endTime || (records.length > 0 ? records[records.length - 1].timestamp : new Date()),
             importedAt: new Date(),
           };
           

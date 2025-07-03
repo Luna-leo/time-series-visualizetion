@@ -122,12 +122,13 @@ export class DuckDBManager {
   }
 
   /**
-   * Import CSV to Parquet
+   * Import CSV to Parquet with deduplication
    */
-  async csvToParquet(
+  async csvToParquetWithMerge(
     csvData: ArrayBuffer,
     machineId: string,
     yearMonth: string,
+    existingParquetData?: ArrayBuffer,
     skipRows: number = 3
   ): Promise<ArrayBuffer> {
     if (!this.conn || !this.db) throw new Error('DuckDB not initialized');
@@ -137,16 +138,54 @@ export class DuckDBManager {
       const csvName = `temp_csv_${Date.now()}`;
       await this.db.registerFileBuffer(csvName, new Uint8Array(csvData));
 
-      // Read CSV and convert to Parquet
-      const result = await this.conn.query(`
-        COPY (
-          SELECT * FROM read_csv('${csvName}', 
-            AUTO_DETECT = TRUE,
-            HEADER = TRUE,
-            SKIP = ${skipRows}
-          )
-        ) TO 'output.parquet' (FORMAT PARQUET)
-      `);
+      let finalQuery: string;
+
+      if (existingParquetData) {
+        // Register existing Parquet file
+        const existingName = `existing_parquet_${Date.now()}`;
+        await this.db.registerFileBuffer(existingName, new Uint8Array(existingParquetData));
+
+        // Merge with existing data and remove duplicates based on timestamp
+        finalQuery = `
+          COPY (
+            WITH new_data AS (
+              SELECT * FROM read_csv('${csvName}', 
+                AUTO_DETECT = TRUE,
+                HEADER = TRUE,
+                SKIP = ${skipRows}
+              )
+            ),
+            existing_data AS (
+              SELECT * FROM parquet_scan('${existingName}')
+            ),
+            combined_data AS (
+              SELECT * FROM new_data
+              UNION ALL
+              SELECT * FROM existing_data
+            )
+            SELECT DISTINCT ON (timestamp) *
+            FROM combined_data
+            ORDER BY timestamp, 1
+          ) TO 'output.parquet' (FORMAT PARQUET)
+        `;
+
+        // Cleanup existing file reference
+        await this.db.dropFile(existingName);
+      } else {
+        // No existing data, just convert CSV
+        finalQuery = `
+          COPY (
+            SELECT * FROM read_csv('${csvName}', 
+              AUTO_DETECT = TRUE,
+              HEADER = TRUE,
+              SKIP = ${skipRows}
+            )
+          ) TO 'output.parquet' (FORMAT PARQUET)
+        `;
+      }
+
+      // Execute the query
+      await this.conn.query(finalQuery);
 
       // Get the Parquet file data
       const parquetData = await this.db.copyFileToBuffer('output.parquet');
@@ -215,6 +254,18 @@ export class DuckDBManager {
       startTime.toISOString(),
       endTime.toISOString()
     ]);
+  }
+
+  /**
+   * Keep the old method for backward compatibility
+   */
+  async csvToParquet(
+    csvData: ArrayBuffer,
+    machineId: string,
+    yearMonth: string,
+    skipRows: number = 3
+  ): Promise<ArrayBuffer> {
+    return this.csvToParquetWithMerge(csvData, machineId, yearMonth, undefined, skipRows);
   }
 
   /**

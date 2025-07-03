@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
+import { MetadataInputDialog, type CSVMetadata } from './MetadataInputDialog';
 
 interface FileUploadProps {
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File, metadata: CSVMetadata) => void;
   accept?: string;
   maxSize?: number; // in MB
   disabled?: boolean;
@@ -17,6 +18,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showMetadataDialog, setShowMetadataDialog] = useState(false);
 
   const validateFile = (file: File): boolean => {
     setError(null);
@@ -39,9 +42,10 @@ export const FileUpload: React.FC<FileUploadProps> = ({
 
   const handleFile = useCallback((file: File) => {
     if (validateFile(file)) {
-      onFileSelect(file);
+      setSelectedFile(file);
+      setShowMetadataDialog(true);
     }
-  }, [onFileSelect, maxSize]);
+  }, []);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -77,6 +81,19 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       handleFile(files[0]);
     }
   }, [handleFile]);
+
+  const handleMetadataSubmit = useCallback((metadata: CSVMetadata) => {
+    if (selectedFile) {
+      onFileSelect(selectedFile, metadata);
+      setSelectedFile(null);
+      setShowMetadataDialog(false);
+    }
+  }, [selectedFile, onFileSelect]);
+
+  const handleMetadataCancel = useCallback(() => {
+    setSelectedFile(null);
+    setShowMetadataDialog(false);
+  }, []);
 
   return (
     <div className="w-full">
@@ -138,6 +155,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           <li>Row 4+: Data rows with timestamp in first column</li>
         </ul>
       </div>
+
+      {showMetadataDialog && selectedFile && (
+        <MetadataInputDialog
+          fileName={selectedFile.name}
+          onSubmit={handleMetadataSubmit}
+          onCancel={handleMetadataCancel}
+        />
+      )}
     </div>
   );
 };

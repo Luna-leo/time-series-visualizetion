@@ -30,6 +30,7 @@ export function DataQueryPanel({
   const [endDate, setEndDate] = useState<string>('');
   const [aggregationInterval, setAggregationInterval] = useState<string>('');
   const [importHistory, setImportHistory] = useState<any[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
 
   // Load parameters when machine is selected
   useEffect(() => {
@@ -75,6 +76,25 @@ export function DataQueryPanel({
     });
   };
 
+  const handlePresetSelect = (preset: any) => {
+    setSelectedPreset(preset.fileName);
+    
+    // Apply preset values
+    if (preset.label) {
+      // You can add label to the chart title or as metadata
+    }
+    
+    if (preset.startTime) {
+      const startDateTime = new Date(preset.startTime);
+      setStartDate(startDateTime.toISOString().slice(0, 16));
+    }
+    
+    if (preset.endTime) {
+      const endDateTime = new Date(preset.endTime);
+      setEndDate(endDateTime.toISOString().slice(0, 16));
+    }
+  };
+
   const machineParams = selectedMachine ? availableParameters.get(selectedMachine) || [] : [];
 
   return (
@@ -104,15 +124,26 @@ export function DataQueryPanel({
           </select>
         </div>
 
-        {/* Import History */}
+        {/* Search Presets / Import History */}
         {importHistory.length > 0 && (
           <div>
-            <label className="block text-sm font-medium mb-1">Import History</label>
-            <div className="max-h-32 overflow-y-auto border rounded p-2 text-xs">
+            <label className="block text-sm font-medium mb-1">Search Presets</label>
+            <div className="max-h-32 overflow-y-auto border rounded p-2">
               {importHistory.map((history, idx) => (
-                <div key={idx} className="mb-1">
-                  {history.fileName} - {new Date(history.importedAt).toLocaleString()}
-                  {history.label && ` (${history.label})`}
+                <div 
+                  key={idx} 
+                  className={`p-2 mb-1 rounded cursor-pointer hover:bg-gray-100 ${
+                    selectedPreset === history.fileName ? 'bg-blue-100' : ''
+                  }`}
+                  onClick={() => handlePresetSelect(history)}
+                >
+                  <div className="text-sm font-medium">
+                    {history.label || history.fileName}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    {history.event && <span className="mr-2">Event: {history.event}</span>}
+                    {new Date(history.importedAt).toLocaleDateString()}
+                  </div>
                 </div>
               ))}
             </div>

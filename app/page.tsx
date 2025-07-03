@@ -82,9 +82,9 @@ export default function UnifiedChartPage() {
     visibilityMap,
   });
 
-  // Handle file upload
-  const handleFileUpload = useCallback(async (file: File) => {
-    await uploadCSV(file);
+  // Handle file upload with metadata
+  const handleFileUpload = useCallback(async (file: File, metadata: any) => {
+    await uploadCSV(file, metadata);
   }, [uploadCSV]);
 
   // Handle chart creation
