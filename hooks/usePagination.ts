@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { GRID_CONFIGURATIONS, TOTAL_CHARTS } from '../constants/chartTheme';
+import { GRID_CONFIGURATIONS } from '../constants/chartTheme';
 import type { GridSize } from '../types/chart';
 
 interface UsePaginationOptions {
@@ -7,7 +7,7 @@ interface UsePaginationOptions {
   totalItems?: number;
 }
 
-export function usePagination({ gridSize, totalItems = TOTAL_CHARTS }: UsePaginationOptions) {
+export function usePagination({ gridSize, totalItems = 0 }: UsePaginationOptions) {
   const [currentPage, setCurrentPage] = useState(1);
 
   // Calculate items per page based on grid size
