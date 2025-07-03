@@ -58,17 +58,36 @@ export class CSVParser {
       throw new Error('Header rows must have the same number of columns');
     }
 
-    // Parse timestamps and data
+    // Parse timestamps and data with deduplication
     const timestamps: Date[] = [];
-    const parameters: CSVParameter[] = header.ids.map((id, index) => ({
-      id: id || `PARAM${index + 1}`,
-      name: header.names[index] || `Parameter ${index + 1}`,
-      unit: header.units[index] || '',
-      columnIndex: index + 1,
-      data: [],
-    }));
-
     const errors: string[] = [];
+    const usedIds = new Set<string>();
+    const parameters: CSVParameter[] = header.ids.map((id, index) => {
+      let uniqueId = id || `PARAM${index + 1}`;
+      let counter = 1;
+      
+      // Check for duplicate IDs and create unique ones
+      const baseId = uniqueId;
+      while (usedIds.has(uniqueId)) {
+        counter++;
+        uniqueId = `${baseId}_${counter}`;
+      }
+      
+      usedIds.add(uniqueId);
+      
+      // If ID was deduplicated, add a warning
+      if (counter > 1) {
+        errors.push(`Warning: Duplicate parameter ID '${baseId}' found. Renamed to '${uniqueId}'`);
+      }
+      
+      return {
+        id: uniqueId,
+        name: header.names[index] || `Parameter ${index + 1}`,
+        unit: header.units[index] || '',
+        columnIndex: index + 1,
+        data: [],
+      };
+    });
 
     // Process data rows (skip header rows)
     for (let rowIndex = 3; rowIndex < data.length; rowIndex++) {

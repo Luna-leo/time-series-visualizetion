@@ -150,7 +150,7 @@ export default function UnifiedChartPage() {
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="text-2xl mb-4 text-red-600">Error Loading Data</div>
-          <div className="text-sm text-gray-600">{error.message}</div>
+          <div className="text-sm text-gray-600">{error}</div>
         </div>
       </div>
     );
