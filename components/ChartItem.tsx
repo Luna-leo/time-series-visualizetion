@@ -15,7 +15,7 @@ interface ChartItemProps {
 }
 
 export const ChartItem = React.memo<ChartItemProps>(({ chart, width, height, visibleSeries, gridSize }) => {
-  const isDenseGrid = gridSize === '3x3' || gridSize === '4x4';
+  const isDenseGrid = gridSize === '1x1' || gridSize === '3x3' || gridSize === '4x4';
   const padding = isDenseGrid ? '' : 'p-1';
   
   return (

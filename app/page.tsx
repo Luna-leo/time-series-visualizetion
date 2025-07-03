@@ -20,7 +20,7 @@ export default function UnifiedChartPage() {
   // Custom hooks
   const chartCount = GRID_CONFIGURATIONS[gridSize].rows * GRID_CONFIGURATIONS[gridSize].cols;
   const { visibilityMap } = useMultiChartSeriesVisibility(chartCount);
-  const isDenseGrid = gridSize === '3x3' || gridSize === '4x4';
+  const isDenseGrid = gridSize === '1x1' || gridSize === '3x3' || gridSize === '4x4';
   
   const { charts, isLoading, isInitializing, error, loadCharts } = useChartData({
     initialGridSize: gridSize,

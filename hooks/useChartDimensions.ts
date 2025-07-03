@@ -42,14 +42,8 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
     if (gridSize === '1x1') {
       const effectiveHeaderHeight = headerHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
       const containerPadding = padding * 2;
-      const width = Math.min(
-        window.innerWidth - containerPadding - CHART_SPACING.paddingAndBorder,
-        LAYOUT_CONSTANTS.maxDimensions.width
-      );
-      const height = Math.min(
-        window.innerHeight - containerPadding - effectiveHeaderHeight - CHART_SPACING.paddingAndBorder,
-        LAYOUT_CONSTANTS.maxDimensions.height
-      );
+      const width = window.innerWidth - containerPadding - CHART_SPACING.paddingAndBorder;
+      const height = window.innerHeight - containerPadding - effectiveHeaderHeight - CHART_SPACING.paddingAndBorder;
       const minSize = GRID_MIN_SIZES[gridSize];
       return {
         width: Math.max(width, minSize.width),
