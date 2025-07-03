@@ -41,12 +41,13 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
     // For 1x1 grid, use larger dimensions
     if (gridSize === '1x1') {
       const effectiveHeaderHeight = headerHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
+      const containerPadding = padding * 2;
       const width = Math.min(
-        window.innerWidth - CHART_SPACING.containerPadding - CHART_SPACING.paddingAndBorder,
+        window.innerWidth - containerPadding - CHART_SPACING.paddingAndBorder,
         LAYOUT_CONSTANTS.maxDimensions.width
       );
       const height = Math.min(
-        window.innerHeight - CHART_SPACING.containerPadding - effectiveHeaderHeight - CHART_SPACING.paddingAndBorder,
+        window.innerHeight - containerPadding - effectiveHeaderHeight - CHART_SPACING.paddingAndBorder,
         LAYOUT_CONSTANTS.maxDimensions.height
       );
       const minSize = GRID_MIN_SIZES[gridSize];
@@ -57,14 +58,20 @@ export const useChartDimensions = (options: UseChartDimensionsOptions = {}) => {
     }
 
     const grid = GRID_CONFIGURATIONS[gridSize];
-    const gap = LAYOUT_CONSTANTS.chart.gap;
+    const isDenseGrid = gridSize === '3x3' || gridSize === '4x4';
+    const gap = isDenseGrid ? 4 : LAYOUT_CONSTANTS.chart.gap; // gap-1 = 4px, gap-2 = 8px
     const effectiveHeaderHeight = headerHeight + (hasProgressBar ? LAYOUT_CONSTANTS.progressBar.height : 0);
+    const containerPadding = padding * 2; // padding is for one side, we need both sides
     
-    const availableWidth = window.innerWidth - CHART_SPACING.containerPadding - (grid.cols - 1) * gap;
-    const availableHeight = window.innerHeight - CHART_SPACING.containerPadding - effectiveHeaderHeight - (grid.rows - 1) * gap;
+    const availableWidth = window.innerWidth - containerPadding - (grid.cols - 1) * gap;
+    const availableHeight = window.innerHeight - containerPadding - effectiveHeaderHeight - (grid.rows - 1) * gap;
     
-    const width = Math.floor(availableWidth / grid.cols) - CHART_SPACING.paddingAndBorder;
-    const height = Math.floor(availableHeight / grid.rows) - CHART_SPACING.paddingAndBorder;
+    const chartPaddingAndBorder = isDenseGrid 
+      ? LAYOUT_CONSTANTS.chart.border // Only border for dense grids (no padding)
+      : CHART_SPACING.paddingAndBorder; // Border + padding for regular grids
+    
+    const width = Math.floor(availableWidth / grid.cols) - chartPaddingAndBorder;
+    const height = Math.floor(availableHeight / grid.rows) - chartPaddingAndBorder;
 
     const minSize = GRID_MIN_SIZES[gridSize];
     return {
