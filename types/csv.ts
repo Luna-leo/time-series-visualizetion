@@ -12,6 +12,7 @@ export interface ParsedCSVData {
   parameters: CSVParameter[];
   fileName: string;
   errors?: string[];
+  detectedEncoding?: string;
 }
 
 export interface CSVHeader {
@@ -23,7 +24,7 @@ export interface CSVHeader {
 export interface CSVParseOptions {
   dateFormat?: string;
   delimiter?: string;
-  encoding?: string;
+  encoding?: 'UTF8' | 'SJIS' | 'EUCJP' | 'JIS' | 'AUTO' | string;
   maxFileSize?: number; // in bytes
 }
 
@@ -38,4 +39,29 @@ export interface ChartConfiguration {
   title: string;
   parameterIds: string[];
   gridPosition?: { row: number; col: number };
+}
+
+// Long Format data structure for multi-file merging
+export interface LongFormatRecord {
+  timestamp: Date;
+  parameterId: string;
+  value: number;
+  parameterName: string;
+  unit: string;
+  sourceFile: string;
+}
+
+export interface FileParseResult {
+  records: LongFormatRecord[];
+  parameterInfo: Record<string, { name: string; unit: string }>;
+  timeRange: { start: Date; end: Date };
+  errors?: string[];
+}
+
+export interface MultiFileParseResult {
+  mergedData: ParsedCSVData;
+  fileResults: Record<string, FileParseResult>;
+  totalRecords: number;
+  duplicatesResolved: number;
+  warnings: string[];
 }

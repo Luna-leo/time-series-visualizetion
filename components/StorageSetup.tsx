@@ -4,15 +4,28 @@ import React, { useState, useEffect } from 'react';
 import { FileSystemManager } from '../lib/fileSystem/fileSystemManager';
 import { DuckDBManager } from '../lib/duckdb/duckdbManager';
 import type { StorageConfig } from '../types/fileSystem';
+import { useFileSystemSettings } from '../hooks/useSettings';
 
 interface StorageSetupProps {
   onSetupComplete: (config: {
     fileSystemManager: FileSystemManager;
     duckdbManager: DuckDBManager;
   }) => void;
+  fileSystemManager: FileSystemManager | null;
+  duckdbManager: DuckDBManager | null;
+  lastUsedDirectory: { name: string; lastAccessTime: string } | null;
+  canReconnect: boolean;
+  onReconnect: () => Promise<void>;
 }
 
-export const StorageSetup: React.FC<StorageSetupProps> = ({ onSetupComplete }) => {
+export const StorageSetup: React.FC<StorageSetupProps> = ({ 
+  onSetupComplete,
+  fileSystemManager,
+  duckdbManager,
+  lastUsedDirectory,
+  canReconnect,
+  onReconnect
+}) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [storageConfig, setStorageConfig] = useState<StorageConfig | null>(null);
@@ -20,6 +33,7 @@ export const StorageSetup: React.FC<StorageSetupProps> = ({ onSetupComplete }) =
     step: string;
     progress: number;
   }>({ step: '', progress: 0 });
+  const { fileSystemSettings, updateFileSystemSettings } = useFileSystemSettings();
 
   // Check for browser compatibility
   useEffect(() => {
@@ -28,32 +42,37 @@ export const StorageSetup: React.FC<StorageSetupProps> = ({ onSetupComplete }) =
     }
   }, []);
 
-  const handleSelectDirectory = async () => {
+  const handleSelectDirectory = async (useNewDirectory = true) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // Step 1: Initialize file system
-      setSetupProgress({ step: 'Selecting directory...', progress: 10 });
-      const fileSystemManager = new FileSystemManager();
-      const config = await fileSystemManager.initialize();
-      setStorageConfig(config);
+      let fsManager = fileSystemManager;
+      let dbManager = duckdbManager;
 
-      // Step 2: Check permissions
-      setSetupProgress({ step: 'Checking permissions...', progress: 30 });
-      const permissions = await fileSystemManager.checkPermissions();
-      if (!permissions.canWrite) {
-        throw new Error('Write permission denied. Please grant permission to save data.');
+      if (useNewDirectory || !fsManager || !dbManager) {
+        // Step 1: Initialize file system
+        setSetupProgress({ step: 'Selecting directory...', progress: 10 });
+        fsManager = new FileSystemManager();
+        const config = await fsManager.initialize();
+        setStorageConfig(config);
+
+        // Step 2: Check permissions
+        setSetupProgress({ step: 'Checking permissions...', progress: 30 });
+        const permissions = await fsManager.checkPermissions();
+        if (!permissions.canWrite) {
+          throw new Error('Write permission denied. Please grant permission to save data.');
+        }
+
+        // Step 3: Initialize DuckDB
+        setSetupProgress({ step: 'Initializing DuckDB...', progress: 50 });
+        dbManager = new DuckDBManager(fsManager);
+        await dbManager.initialize();
       }
-
-      // Step 3: Initialize DuckDB
-      setSetupProgress({ step: 'Initializing DuckDB...', progress: 50 });
-      const duckdbManager = new DuckDBManager(fileSystemManager);
-      await duckdbManager.initialize();
 
       // Step 4: Scan existing data
       setSetupProgress({ step: 'Scanning existing data...', progress: 80 });
-      const storageInfo = await fileSystemManager.getStorageInfo();
+      const storageInfo = await fsManager!.getStorageInfo();
       console.log('Storage info:', storageInfo);
 
       // Complete setup
@@ -61,13 +80,35 @@ export const StorageSetup: React.FC<StorageSetupProps> = ({ onSetupComplete }) =
       
       // Notify parent component
       setTimeout(() => {
-        onSetupComplete({ fileSystemManager, duckdbManager });
+        onSetupComplete({ fileSystemManager: fsManager!, duckdbManager: dbManager! });
       }, 500);
 
     } catch (err) {
       console.error('Setup error:', err);
       setError(err instanceof Error ? err.message : 'Failed to setup storage');
       setStorageConfig(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReconnect = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      setSetupProgress({ step: 'Attempting to reconnect to previous directory...', progress: 30 });
+      await onReconnect();
+      // If onReconnect completes without error, the connection was successful
+      // The parent component will handle the state update
+    } catch (err) {
+      console.error('Reconnect error:', err);
+      // Check if the error is due to user cancellation
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError('Directory selection was cancelled. Please try again.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to reconnect. Please select the directory again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -85,7 +126,7 @@ export const StorageSetup: React.FC<StorageSetupProps> = ({ onSetupComplete }) =
           <p className="text-red-600 mb-4">{error}</p>
           {!error.includes('browser') && (
             <button
-              onClick={handleSelectDirectory}
+              onClick={() => handleSelectDirectory()}
               className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
             >
               Try Again
@@ -145,12 +186,49 @@ export const StorageSetup: React.FC<StorageSetupProps> = ({ onSetupComplete }) =
           This folder will contain Parquet files organized by machine.
         </p>
         
+        {/* Show reconnect option if available */}
+        {canReconnect && lastUsedDirectory && (
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+            <p className="text-sm text-gray-700 mb-3">
+              Previously used directory:
+            </p>
+            <p className="font-medium text-blue-700 mb-3">
+              {lastUsedDirectory.name}
+            </p>
+            <p className="text-xs text-gray-500 mb-4">
+              Last accessed: {new Date(lastUsedDirectory.lastAccessTime).toLocaleString()}
+            </p>
+            <button
+              onClick={handleReconnect}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+            >
+              Use Previous Directory
+            </button>
+            <p className="text-xs text-gray-500 mt-2">
+              We'll try to reconnect automatically. If that fails, you'll need to select the directory again.
+            </p>
+          </div>
+        )}
+        
         <button
-          onClick={handleSelectDirectory}
+          onClick={() => handleSelectDirectory()}
           className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
         >
-          Select Storage Folder
+          {canReconnect ? 'Select New Directory' : 'Select Storage Folder'}
         </button>
+        
+        {/* Settings for auto-reconnect */}
+        <div className="mt-6">
+          <label className="inline-flex items-center text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={fileSystemSettings.autoReconnect}
+              onChange={(e) => updateFileSystemSettings({ autoReconnect: e.target.checked })}
+              className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Remember this directory for next time
+          </label>
+        </div>
         
         <div className="mt-8 text-xs text-gray-500">
           <p>Your data remains on your computer and is never uploaded.</p>

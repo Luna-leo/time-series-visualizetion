@@ -9,6 +9,8 @@ import type {
   DirectoryStructure,
   MachineDirectory 
 } from '../../types/fileSystem';
+import { SettingsManager } from '../settings/settingsManager';
+import { getIndexedDBHelper } from '../storage/indexedDBHelper';
 
 export class FileSystemManager {
   private rootHandle: FileSystemDirectoryHandle | null = null;
@@ -17,6 +19,8 @@ export class FileSystemManager {
     duckdb: null,
     metadata: null,
   };
+  private settingsManager = SettingsManager.getInstance();
+  private indexedDBHelper = getIndexedDBHelper();
 
   /**
    * Initialize file system with user-selected directory
@@ -28,6 +32,15 @@ export class FileSystemManager {
         mode: 'readwrite',
         startIn: 'documents',
       });
+
+      // Save the directory name for future use
+      this.settingsManager.updateFileSystemSettings({
+        lastUsedDirectoryName: this.rootHandle.name,
+        lastAccessTime: new Date().toISOString(),
+      });
+
+      // Save the directory handle to IndexedDB for reconnection
+      await this.indexedDBHelper.saveDirectoryHandle(this.rootHandle);
 
       // Create directory structure
       await this.setupDirectoryStructure();
@@ -41,6 +54,84 @@ export class FileSystemManager {
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw new Error('User cancelled directory selection');
       }
+      throw error;
+    }
+  }
+
+  /**
+   * Try to reconnect to a previously used directory
+   */
+  async tryReconnect(): Promise<StorageConfig | null> {
+    const fileSystemSettings = this.settingsManager.getFileSystemSettings();
+    
+    if (!fileSystemSettings.lastUsedDirectoryName || !fileSystemSettings.autoReconnect) {
+      return null;
+    }
+
+    try {
+      // Try to retrieve the persisted handle from IndexedDB
+      const persistedHandle = await this.indexedDBHelper.getDirectoryHandle();
+      
+      if (persistedHandle) {
+        // Check if permissions are still valid
+        const readPermission = await persistedHandle.queryPermission({ mode: 'read' });
+        const writePermission = await persistedHandle.queryPermission({ mode: 'readwrite' });
+        
+        if (readPermission === 'granted' && writePermission === 'granted') {
+          // Use the persisted handle
+          return await this.initializeWithHandle(persistedHandle);
+        } else {
+          // Request permissions again
+          const readRequest = await persistedHandle.requestPermission({ mode: 'read' });
+          const writeRequest = await persistedHandle.requestPermission({ mode: 'readwrite' });
+          
+          if (readRequest === 'granted' && writeRequest === 'granted') {
+            return await this.initializeWithHandle(persistedHandle);
+          }
+        }
+      }
+      
+      // If we can't use the persisted handle, return null to show the reconnect UI
+      return null;
+    } catch (error) {
+      console.error('Failed to reconnect to previous directory:', error);
+      // Remove invalid handle
+      await this.indexedDBHelper.removeDirectoryHandle();
+      return null;
+    }
+  }
+
+  /**
+   * Initialize with a specific directory handle (for reconnection)
+   */
+  async initializeWithHandle(handle: FileSystemDirectoryHandle): Promise<StorageConfig> {
+    try {
+      this.rootHandle = handle;
+
+      // Verify permissions
+      const permissionStatus = await this.checkPermissions();
+      if (!permissionStatus.canRead || !permissionStatus.canWrite) {
+        throw new Error('Insufficient permissions for the selected directory');
+      }
+
+      // Update last used directory
+      this.settingsManager.updateFileSystemSettings({
+        lastUsedDirectoryName: handle.name,
+        lastAccessTime: new Date().toISOString(),
+      });
+
+      // Save the directory handle to IndexedDB for reconnection
+      await this.indexedDBHelper.saveDirectoryHandle(handle);
+
+      // Setup directory structure
+      await this.setupDirectoryStructure();
+
+      return {
+        rootDirectory: this.rootHandle,
+        isInitialized: true,
+        storagePath: this.rootHandle.name,
+      };
+    } catch (error) {
       throw error;
     }
   }
@@ -70,13 +161,13 @@ export class FileSystemManager {
     for await (const entry of machinesDir.values()) {
       if (entry.kind === 'directory') {
         const machineDir: MachineDirectory = {
-          handle: entry,
+          handle: entry as FileSystemDirectoryHandle,
           machineId: entry.name,
           parquetFiles: [],
         };
 
         // Scan for parquet files
-        for await (const file of entry.values()) {
+        for await (const file of (entry as FileSystemDirectoryHandle).values()) {
           if (file.kind === 'file' && file.name.endsWith('.parquet')) {
             machineDir.parquetFiles.push(file.name);
           } else if (file.name === 'metadata.json') {
@@ -276,6 +367,32 @@ export class FileSystemManager {
    */
   isInitialized(): boolean {
     return this.rootHandle !== null;
+  }
+
+  /**
+   * Get last used directory info
+   */
+  getLastUsedDirectoryInfo(): { name: string; lastAccessTime: string } | null {
+    const settings = this.settingsManager.getFileSystemSettings();
+    if (settings.lastUsedDirectoryName && settings.lastAccessTime) {
+      return {
+        name: settings.lastUsedDirectoryName,
+        lastAccessTime: settings.lastAccessTime,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Clear stored directory info
+   */
+  clearStoredDirectoryInfo(): void {
+    this.settingsManager.updateFileSystemSettings({
+      lastUsedDirectoryName: undefined,
+      lastAccessTime: undefined,
+    });
+    // Also clear the persisted handle
+    this.indexedDBHelper.removeDirectoryHandle().catch(console.error);
   }
 
   /**

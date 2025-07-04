@@ -5,12 +5,14 @@
 
 import Papa from 'papaparse';
 import type { CSVHeader, CSVParameter } from '../types/csv';
+import { readCSVFileWithEncoding, SupportedEncoding } from './encoding';
 
 interface CSVParseResult {
   headers: CSVHeader;
   data: Array<Record<string, any>>;
   parameters: CSVParameter[];
   errors: string[];
+  detectedEncoding?: string;
 }
 
 /**
@@ -18,53 +20,72 @@ interface CSVParseResult {
  */
 export async function parseCSVWithSpecialHeader(
   file: File,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  encoding?: SupportedEncoding
 ): Promise<CSVParseResult> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    const errors: string[] = [];
+  const errors: string[] = [];
 
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const lines = text.split('\n').filter(line => line.trim());
+  try {
+    // エンコーディングを検出して、UTF-8に変換
+    const text = await readCSVFileWithEncoding(file, encoding);
+    const lines = text.split('\n').filter(line => line.trim());
       
-      if (lines.length < 4) {
-        reject(new Error('CSV must have at least 3 header rows and 1 data row'));
-        return;
+    if (lines.length < 4) {
+      throw new Error('CSV must have at least 3 header rows and 1 data row');
+    }
+
+    // Parse header rows
+    const headerRows = lines.slice(0, 3).map(line => 
+      Papa.parse(line, { delimiter: ',' }).data[0] as string[]
+    );
+
+    const headers: CSVHeader = {
+      ids: headerRows[0].slice(1),
+      names: headerRows[1].slice(1),
+      units: headerRows[2].slice(1),
+    };
+
+    // Validate headers
+    const paramCount = headers.ids.length;
+    if (headers.names.length !== paramCount || headers.units.length !== paramCount) {
+      throw new Error('Header rows must have the same number of columns');
+    }
+
+    // Create parameter info with deduplication
+    const usedIds = new Set<string>();
+    const parameters: CSVParameter[] = headers.ids.map((id, index) => {
+      let uniqueId = id || `PARAM${index + 1}`;
+      let counter = 1;
+      
+      // Check for duplicate IDs and create unique ones
+      const baseId = uniqueId;
+      while (usedIds.has(uniqueId)) {
+        counter++;
+        uniqueId = `${baseId}_${counter}`;
       }
-
-      // Parse header rows
-      const headerRows = lines.slice(0, 3).map(line => 
-        Papa.parse(line, { delimiter: ',' }).data[0] as string[]
-      );
-
-      const headers: CSVHeader = {
-        ids: headerRows[0].slice(1),
-        names: headerRows[1].slice(1),
-        units: headerRows[2].slice(1),
-      };
-
-      // Validate headers
-      const paramCount = headers.ids.length;
-      if (headers.names.length !== paramCount || headers.units.length !== paramCount) {
-        reject(new Error('Header rows must have the same number of columns'));
-        return;
+      
+      usedIds.add(uniqueId);
+      
+      // If ID was deduplicated, add a warning
+      if (counter > 1) {
+        errors.push(`Warning: Duplicate parameter ID '${baseId}' found. Renamed to '${uniqueId}'`);
       }
-
-      // Create parameter info
-      const parameters: CSVParameter[] = headers.ids.map((id, index) => ({
-        id: id || `PARAM${index + 1}`,
+      
+      return {
+        id: uniqueId,
         name: headers.names[index] || `Parameter ${index + 1}`,
         unit: headers.units[index] || '',
         columnIndex: index + 1,
         data: [],
-      }));
+      };
+    });
 
-      // Parse data rows
-      const dataLines = lines.slice(3);
-      const data: Array<Record<string, any>> = [];
-      let processedRows = 0;
+    // Parse data rows
+    const dataLines = lines.slice(3);
+    const data: Array<Record<string, any>> = [];
+    let processedRows = 0;
 
+    return new Promise((resolve, reject) => {
       Papa.parse(dataLines.join('\n'), {
         delimiter: ',',
         dynamicTyping: true,
@@ -108,18 +129,14 @@ export async function parseCSVWithSpecialHeader(
             errors,
           });
         },
-        error: (error) => {
+        error: (error: any) => {
           reject(new Error(`CSV parsing failed: ${error.message}`));
         },
       });
-    };
-
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
-
-    reader.readAsText(file);
-  });
+    });
+  } catch (error) {
+    throw new Error(`Failed to read CSV file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 /**

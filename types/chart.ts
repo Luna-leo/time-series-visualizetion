@@ -56,4 +56,9 @@ export interface ChartMetadata {
   labels: string[];
   title: string;
   sensorType?: string;
+  parameters?: Array<{
+    id: string;
+    name: string;
+    unit: string;
+  }>;
 }

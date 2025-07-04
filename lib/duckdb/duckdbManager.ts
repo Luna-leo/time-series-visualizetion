@@ -139,10 +139,11 @@ export class DuckDBManager {
       await this.db.registerFileBuffer(csvName, new Uint8Array(csvData));
 
       let finalQuery: string;
+      let existingName: string | undefined;
 
       if (existingParquetData) {
         // Register existing Parquet file
-        const existingName = `existing_parquet_${Date.now()}`;
+        existingName = `existing_parquet_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         await this.db.registerFileBuffer(existingName, new Uint8Array(existingParquetData));
 
         // Merge with existing data and remove duplicates based on timestamp
@@ -168,9 +169,6 @@ export class DuckDBManager {
             ORDER BY timestamp, 1
           ) TO 'output.parquet' (FORMAT PARQUET)
         `;
-
-        // Cleanup existing file reference
-        await this.db.dropFile(existingName);
       } else {
         // No existing data, just convert CSV
         finalQuery = `
@@ -193,8 +191,18 @@ export class DuckDBManager {
       // Cleanup
       await this.db.dropFile(csvName);
       await this.db.dropFile('output.parquet');
+      
+      // Cleanup existing file reference if it was used
+      if (existingName) {
+        try {
+          await this.db.dropFile(existingName);
+        } catch (cleanupError) {
+          // Ignore cleanup errors
+          console.warn('Failed to cleanup temporary file:', cleanupError);
+        }
+      }
 
-      return parquetData.buffer;
+      return parquetData.buffer as ArrayBuffer;
     } catch (error) {
       console.error('Failed to convert CSV to Parquet:', error);
       throw error;
@@ -327,6 +335,164 @@ export class DuckDBManager {
 
     const result = await this.query(sql);
     return result[0];
+  }
+
+  /**
+   * Merge multiple CSV files using DuckDB
+   * More memory efficient than JavaScript-based merging
+   */
+  async mergeCSVFilesWithDuckDB(
+    csvFiles: { name: string; data: ArrayBuffer }[],
+    onProgress?: (progress: { current: number; total: number; phase: string }) => void
+  ): Promise<{ data: ArrayBuffer; recordCount: number; warnings: string[] }> {
+    if (!this.conn || !this.db) throw new Error('DuckDB not initialized');
+
+    const warnings: string[] = [];
+    const tempNames: string[] = [];
+
+    try {
+      // Phase 1: Register all CSV files
+      if (onProgress) onProgress({ current: 0, total: csvFiles.length, phase: 'Registering files' });
+      
+      for (let i = 0; i < csvFiles.length; i++) {
+        const tempName = `csv_file_${i}_${Date.now()}`;
+        tempNames.push(tempName);
+        await this.db.registerFileBuffer(tempName, new Uint8Array(csvFiles[i].data));
+        
+        if (onProgress) onProgress({ current: i + 1, total: csvFiles.length, phase: 'Registering files' });
+      }
+
+      // Phase 2: Analyze structure and merge
+      if (onProgress) onProgress({ current: 0, total: 1, phase: 'Analyzing structure' });
+
+      // First, read headers from the first file to understand the structure
+      const headerResult = await this.conn.query(`
+        SELECT * FROM read_csv('${tempNames[0]}', 
+          AUTO_DETECT = FALSE,
+          HEADER = FALSE,
+          SKIP = 0,
+          LIMIT = 3
+        )
+      `);
+      
+      const headers = headerResult.toArray();
+      if (headers.length < 3) {
+        throw new Error('CSV file must have at least 3 header rows');
+      }
+
+      // Extract parameter IDs from the first row (skip timestamp column)
+      const parameterIds = headers[0].slice(1).filter((id: any) => id && id.toString().trim());
+      
+      // Phase 3: Convert to long format and merge
+      if (onProgress) onProgress({ current: 0, total: 1, phase: 'Merging data' });
+
+      // Create long format query for each file
+      const longFormatQueries = tempNames.map((name, fileIndex) => {
+        const paramQueries = parameterIds.map((paramId: any, paramIndex: number) => `
+          SELECT 
+            CAST(column${0} AS TIMESTAMP) as timestamp,
+            '${paramId}' as parameter_id,
+            '${headers[1][paramIndex + 1] || paramId}' as parameter_name,
+            '${headers[2][paramIndex + 1] || '-'}' as unit,
+            CAST(column${paramIndex + 1} AS DOUBLE) as value,
+            '${csvFiles[fileIndex].name}' as source_file
+          FROM read_csv('${name}', 
+            AUTO_DETECT = FALSE,
+            HEADER = FALSE,
+            SKIP = 3,
+            TIMESTAMPFORMAT = '%Y-%m-%dT%H:%M:%S'
+          )
+          WHERE column${paramIndex + 1} IS NOT NULL
+        `).join(' UNION ALL ');
+        
+        return paramQueries;
+      }).join(' UNION ALL ');
+
+      // Count total records
+      const countResult = await this.conn.query(`
+        SELECT COUNT(*) as count FROM (${longFormatQueries})
+      `);
+      const recordCount = countResult.toArray()[0].count as number;
+
+      // Phase 4: Convert back to wide format with deduplication
+      if (onProgress) onProgress({ current: 0, total: 1, phase: 'Converting to wide format' });
+
+      // Build pivot query
+      const pivotColumns = parameterIds.map((paramId: any) => 
+        `MAX(CASE WHEN parameter_id = '${paramId}' THEN value END) as "${paramId}"`
+      ).join(', ');
+
+      const finalQuery = `
+        COPY (
+          WITH long_data AS (
+            ${longFormatQueries}
+          ),
+          deduplicated AS (
+            SELECT 
+              timestamp,
+              parameter_id,
+              value,
+              ROW_NUMBER() OVER (PARTITION BY timestamp, parameter_id ORDER BY source_file DESC) as rn
+            FROM long_data
+          ),
+          wide_format AS (
+            SELECT 
+              timestamp,
+              ${pivotColumns}
+            FROM deduplicated
+            WHERE rn = 1
+            GROUP BY timestamp
+            ORDER BY timestamp
+          )
+          SELECT * FROM wide_format
+        ) TO 'output.parquet' (FORMAT PARQUET)
+      `;
+
+      await this.conn.query(finalQuery);
+
+      // Get the output file data
+      const outputData = await this.db.copyFileToBuffer('output.parquet');
+
+      // Cleanup
+      await this.db.dropFile('output.parquet');
+      for (const name of tempNames) {
+        await this.db.dropFile(name);
+      }
+
+      if (onProgress) onProgress({ current: 1, total: 1, phase: 'Complete' });
+
+      return {
+        data: outputData.buffer,
+        recordCount,
+        warnings
+      };
+    } catch (error) {
+      // Cleanup on error
+      for (const name of tempNames) {
+        try {
+          await this.db.dropFile(name);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a dataset is too large for JavaScript processing
+   */
+  static shouldUseDuckDB(
+    fileSize: number,
+    fileCount: number,
+    estimatedRecords: number
+  ): boolean {
+    // Use DuckDB if:
+    // - Total size > 100MB
+    // - More than 10 files
+    // - More than 500k estimated records
+    const totalSize = fileSize * fileCount;
+    return totalSize > 100 * 1024 * 1024 || fileCount > 10 || estimatedRecords > 500000;
   }
 
   /**

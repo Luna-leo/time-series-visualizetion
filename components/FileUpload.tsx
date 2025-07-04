@@ -5,47 +5,68 @@ import { MetadataInputDialog, type CSVMetadata } from './MetadataInputDialog';
 
 interface FileUploadProps {
   onFileSelect: (file: File, metadata: CSVMetadata) => void;
+  onMultipleFilesSelect?: (files: File[], metadata: CSVMetadata) => void;
   accept?: string;
   maxSize?: number; // in MB
   disabled?: boolean;
+  multiple?: boolean;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({
   onFileSelect,
+  onMultipleFilesSelect,
   accept = '.csv',
   maxSize = 50,
   disabled = false,
+  multiple = false,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [showMetadataDialog, setShowMetadataDialog] = useState(false);
 
-  const validateFile = (file: File): boolean => {
+  const validateFiles = useCallback((files: File[]): boolean => {
     setError(null);
 
-    // Check file type
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      setError('Please upload a CSV file');
+    // Check if files are provided
+    if (files.length === 0) {
+      setError('No files selected');
       return false;
     }
 
-    // Check file size
+    // Check file types
+    const invalidFiles = files.filter(file => !file.name.toLowerCase().endsWith('.csv'));
+    if (invalidFiles.length > 0) {
+      setError(`Please upload only CSV files. Invalid files: ${invalidFiles.map(f => f.name).join(', ')}`);
+      return false;
+    }
+
+    // Check individual file sizes
     const maxSizeBytes = maxSize * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
-      setError(`File size must be less than ${maxSize}MB`);
+    const oversizedFiles = files.filter(file => file.size > maxSizeBytes);
+    if (oversizedFiles.length > 0) {
+      setError(`Files must be less than ${maxSize}MB each. Oversized files: ${oversizedFiles.map(f => f.name).join(', ')}`);
+      return false;
+    }
+
+    // Check total file size (max 200MB for all files combined)
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    const maxTotalSizeBytes = 200 * 1024 * 1024; // 200MB
+    if (totalSize > maxTotalSizeBytes) {
+      const totalSizeMB = Math.round(totalSize / (1024 * 1024));
+      setError(`Total file size (${totalSizeMB}MB) exceeds maximum allowed size of 200MB. Please split into smaller batches.`);
       return false;
     }
 
     return true;
-  };
+  }, [maxSize]);
 
-  const handleFile = useCallback((file: File) => {
-    if (validateFile(file)) {
-      setSelectedFile(file);
+  const handleFiles = useCallback((files: File[]) => {
+    if (validateFiles(files)) {
+      setSelectedFiles(files);
       setShowMetadataDialog(true);
     }
-  }, []);
+  }, [validateFiles]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -71,28 +92,50 @@ export const FileUpload: React.FC<FileUploadProps> = ({
 
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) {
-      handleFile(files[0]);
+      if (multiple && onMultipleFilesSelect) {
+        handleFiles(files);
+      } else {
+        handleFiles([files[0]]);
+      }
     }
-  }, [handleFile]);
+  }, [multiple, onMultipleFilesSelect, handleFiles]);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      handleFile(files[0]);
+      if (multiple && onMultipleFilesSelect) {
+        handleFiles(Array.from(files));
+      } else {
+        handleFiles([files[0]]);
+      }
     }
-  }, [handleFile]);
+  }, [multiple, onMultipleFilesSelect, handleFiles]);
 
   const handleMetadataSubmit = useCallback((metadata: CSVMetadata) => {
-    if (selectedFile) {
-      onFileSelect(selectedFile, metadata);
-      setSelectedFile(null);
+    if (selectedFiles.length > 0) {
+      if (multiple && onMultipleFilesSelect && selectedFiles.length > 1) {
+        onMultipleFilesSelect(selectedFiles, metadata);
+      } else {
+        onFileSelect(selectedFiles[0], metadata);
+      }
+      setSelectedFiles([]);
       setShowMetadataDialog(false);
     }
-  }, [selectedFile, onFileSelect]);
+  }, [selectedFiles, onFileSelect, onMultipleFilesSelect, multiple]);
 
   const handleMetadataCancel = useCallback(() => {
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setShowMetadataDialog(false);
+  }, []);
+
+  const removeFile = useCallback((index: number) => {
+    setSelectedFiles(prev => {
+      const newFiles = prev.filter((_, i) => i !== index);
+      if (newFiles.length === 0) {
+        setShowMetadataDialog(false);
+      }
+      return newFiles;
+    });
   }, []);
 
   return (
@@ -112,6 +155,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         <input
           type="file"
           accept={accept}
+          multiple={multiple}
           onChange={handleFileInput}
           disabled={disabled}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -137,7 +181,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             <span className="font-semibold">Click to upload</span> or drag and drop
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            CSV files up to {maxSize}MB
+            {multiple ? 'Multiple CSV files' : 'CSV file'} up to {maxSize}MB each
           </p>
           
           {error && (
@@ -156,11 +200,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         </ul>
       </div>
 
-      {showMetadataDialog && selectedFile && (
+      {showMetadataDialog && selectedFiles.length > 0 && (
         <MetadataInputDialog
-          fileName={selectedFile.name}
+          fileName={selectedFiles.length === 1 ? selectedFiles[0].name : `${selectedFiles.length} files`}
+          files={selectedFiles}
           onSubmit={handleMetadataSubmit}
           onCancel={handleMetadataCancel}
+          onRemoveFile={removeFile}
+          multiple={selectedFiles.length > 1}
         />
       )}
     </div>
