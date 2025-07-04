@@ -29,6 +29,11 @@ export class SettingsManager {
    */
   private loadSettings(): AppSettings {
     try {
+      // Check if running in browser environment
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return { ...DEFAULT_SETTINGS };
+      }
+
       const stored = localStorage.getItem(SETTINGS_KEY);
       if (!stored) {
         return { ...DEFAULT_SETTINGS };
@@ -54,6 +59,11 @@ export class SettingsManager {
    */
   private saveSettings(): void {
     try {
+      // Check if running in browser environment
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return;
+      }
+
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings));
       this.notifyListeners();
     } catch (error) {
