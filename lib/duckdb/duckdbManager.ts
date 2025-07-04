@@ -189,9 +189,11 @@ export class DuckDBManager {
           COPY (
             WITH new_data AS (
               SELECT * FROM read_csv('${csvName}', 
-                AUTO_DETECT = TRUE,
-                HEADER = TRUE,
-                SKIP = ${skipRows}
+                ALL_VARCHAR = TRUE,
+                HEADER = FALSE,
+                SKIP = ${skipRows},
+                DELIMITER = ',',
+                QUOTE = '"'
               )
             ),
             existing_data AS (
@@ -212,9 +214,11 @@ export class DuckDBManager {
         finalQuery = `
           COPY (
             SELECT * FROM read_csv('${csvName}', 
-              AUTO_DETECT = TRUE,
-              HEADER = TRUE,
-              SKIP = ${skipRows}
+              ALL_VARCHAR = TRUE,
+              HEADER = FALSE,
+              SKIP = ${skipRows},
+              DELIMITER = ',',
+              QUOTE = '"'
             )
           ) TO 'output.parquet' (FORMAT PARQUET)
         `;
@@ -404,16 +408,16 @@ export class DuckDBManager {
       if (onProgress) onProgress({ current: 0, total: 1, phase: 'Analyzing structure' });
 
       // First, read headers from the first file to understand the structure
-      // Note: Using AUTO_DETECT = TRUE to automatically detect column types
+      // Note: Using ALL_VARCHAR = TRUE to handle 3-row header format
       const headerQuery = `
-        SELECT * FROM (
-          SELECT * FROM read_csv('${tempNames[0]}', 
-            AUTO_DETECT = TRUE,
-            HEADER = FALSE,
-            SKIP = 0
-          )
-        ) AS headers_table
-        LIMIT 3
+        SELECT * FROM read_csv('${tempNames[0]}', 
+          ALL_VARCHAR = TRUE,
+          HEADER = FALSE,
+          SKIP = 0,
+          DELIMITER = ',',
+          QUOTE = '"',
+          LIMIT = 3
+        )
       `;
       
       let headers: any[];
@@ -453,9 +457,11 @@ export class DuckDBManager {
             CAST(column${paramIndex + 1} AS DOUBLE) as value,
             '${csvFiles[fileIndex].name}' as source_file
           FROM read_csv('${name}', 
-            AUTO_DETECT = TRUE,
+            ALL_VARCHAR = TRUE,
             HEADER = FALSE,
             SKIP = 3,
+            DELIMITER = ',',
+            QUOTE = '"',
             TIMESTAMPFORMAT = '%Y-%m-%dT%H:%M:%S'
           )
           WHERE column${paramIndex + 1} IS NOT NULL
