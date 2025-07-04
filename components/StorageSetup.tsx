@@ -97,11 +97,18 @@ export const StorageSetup: React.FC<StorageSetupProps> = ({
     setError(null);
     
     try {
-      setSetupProgress({ step: 'Reconnecting to previous directory...', progress: 50 });
+      setSetupProgress({ step: 'Attempting to reconnect to previous directory...', progress: 30 });
       await onReconnect();
+      // If onReconnect completes without error, the connection was successful
+      // The parent component will handle the state update
     } catch (err) {
       console.error('Reconnect error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to reconnect');
+      // Check if the error is due to user cancellation
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError('Directory selection was cancelled. Please try again.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to reconnect. Please select the directory again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -197,6 +204,9 @@ export const StorageSetup: React.FC<StorageSetupProps> = ({
             >
               Use Previous Directory
             </button>
+            <p className="text-xs text-gray-500 mt-2">
+              We'll try to reconnect automatically. If that fails, you'll need to select the directory again.
+            </p>
           </div>
         )}
         
