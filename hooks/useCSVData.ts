@@ -351,11 +351,17 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
       };
     } else if (csvData) {
       // Chart from CSV data
+      const selectedParams = csvData.parameters.filter(p => config.parameterIds.includes(p.id));
       newChart = {
         id: Date.now(),
         data: CSVParser.toChartData(csvData, config.parameterIds),
         labels: CSVParser.getParameterLabels(csvData, config.parameterIds),
         title: config.title || 'Chart',
+        parameters: selectedParams.map(p => ({
+          id: p.id,
+          name: p.name,
+          unit: p.unit
+        }))
       };
     } else {
       return;
