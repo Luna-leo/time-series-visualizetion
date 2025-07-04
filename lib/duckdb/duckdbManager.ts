@@ -32,6 +32,27 @@ export class DuckDBManager {
   }
 
   /**
+   * Escape single quotes for SQL string literals
+   * @param value - The value to escape
+   * @returns The escaped value
+   */
+  private escapeSQLString(value: string): string {
+    return value.replace(/'/g, "''");
+  }
+
+  /**
+   * Trim and escape a value for safe SQL usage
+   * @param value - The value to process
+   * @returns The trimmed and escaped value
+   */
+  private sanitizeForSQL(value: any): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return this.escapeSQLString(value.toString().trim());
+  }
+
+  /**
    * Initialize DuckDB-WASM
    */
   async initialize(): Promise<void> {
@@ -443,21 +464,30 @@ export class DuckDBManager {
       }
 
       // Extract parameter IDs from the first row (skip timestamp column)
-      const parameterIds = headers[0].slice(1).filter((id: any) => id && id.toString().trim());
+      const parameterIds = headers[0].slice(1)
+        .map((id: any) => id ? id.toString().trim() : '')
+        .filter((id: string) => id);
       
       // Phase 3: Convert to long format and merge
       if (onProgress) onProgress({ current: 0, total: 1, phase: 'Merging data' });
 
       // Create long format query for each file
       const longFormatQueries = tempNames.map((name, fileIndex) => {
-        const paramQueries = parameterIds.map((paramId: any, paramIndex: number) => `
+        const paramQueries = parameterIds.map((paramId: any, paramIndex: number) => {
+          // Safely process header values with trimming and escaping
+          const paramIdClean = this.sanitizeForSQL(paramId);
+          const paramName = this.sanitizeForSQL(headers[1][paramIndex + 1] || paramId);
+          const unit = this.sanitizeForSQL(headers[2][paramIndex + 1] || '-');
+          const sourceFile = this.sanitizeForSQL(csvFiles[fileIndex].name);
+          
+          return `
           SELECT 
             CAST(column${0} AS TIMESTAMP) as timestamp,
-            '${paramId}' as parameter_id,
-            '${headers[1][paramIndex + 1] || paramId}' as parameter_name,
-            '${headers[2][paramIndex + 1] || '-'}' as unit,
+            '${paramIdClean}' as parameter_id,
+            '${paramName}' as parameter_name,
+            '${unit}' as unit,
             CAST(column${paramIndex + 1} AS DOUBLE) as value,
-            '${csvFiles[fileIndex].name}' as source_file
+            '${sourceFile}' as source_file
           FROM read_csv('${name}', 
             all_varchar = true,
             header = false,
@@ -467,7 +497,8 @@ export class DuckDBManager {
             timestampformat = '%Y-%m-%dT%H:%M:%S'
           )
           WHERE column${paramIndex + 1} IS NOT NULL
-        `).join(' UNION ALL ');
+        `;
+        }).join(' UNION ALL ');
         
         return paramQueries;
       }).join(' UNION ALL ');
@@ -482,9 +513,10 @@ export class DuckDBManager {
       if (onProgress) onProgress({ current: 0, total: 1, phase: 'Converting to wide format' });
 
       // Build pivot query
-      const pivotColumns = parameterIds.map((paramId: any) => 
-        `MAX(CASE WHEN parameter_id = '${paramId}' THEN value END) as "${paramId}"`
-      ).join(', ');
+      const pivotColumns = parameterIds.map((paramId: any) => {
+        const paramIdClean = this.sanitizeForSQL(paramId);
+        return `MAX(CASE WHEN parameter_id = '${paramIdClean}' THEN value END) as "${paramIdClean}"`;
+      }).join(', ');
 
       const finalQuery = `
         COPY (
