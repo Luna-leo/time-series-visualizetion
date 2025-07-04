@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
-import { CSVParser } from '../utils/csvParser';
+import { CSVParser, FileParseResult as CSVFileParseResult } from '../utils/csvParser';
 import { parseCSVWithSpecialHeader, prepareDataForParquet, partitionDataByMonth } from '../utils/csvToParquet';
-import type { ParsedCSVData, ChartConfiguration, FileParseResult } from '../types/csv';
+import type { ParsedCSVData, ChartConfiguration } from '../types/csv';
 import type { ChartMetadata, MultiSeriesData } from '../types/chart';
 import type { FileSystemManager } from '../lib/fileSystem/fileSystemManager';
 import type { DuckDBManager } from '../lib/duckdb/duckdbManager';
@@ -198,7 +198,7 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
       const parser = new CSVParser({ encoding: encoding || 'AUTO' });
       
       // Parse all files to Long Format
-      const fileResults: FileParseResult[] = [];
+      const fileResults: CSVFileParseResult[] = [];
       const errors: string[] = [];
       
       for (let i = 0; i < files.length; i++) {

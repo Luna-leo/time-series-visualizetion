@@ -1,51 +1,29 @@
 import Papa from 'papaparse';
 import { getProcessingConfig, ProcessingConfig } from '../config/processing.config';
+import { 
+  CSVParameter, 
+  ParsedCSVData, 
+  LongFormatRecord, 
+  FileParseResult as ImportedFileParseResult, 
+  MultiFileParseResult 
+} from '../types/csv';
 
 interface CSVRow {
   [key: string]: string;
 }
 
-export interface ParsedParameter {
-  id: string;
-  name: string;
-  unit: string;
-  data: number[];
-}
-
-export interface ParsedCSVData {
-  timestamps: Date[];
-  parameters: ParsedParameter[];
-  fileName: string;
-  errors?: string[];
-}
-
-// Long Format interfaces
-export interface LongFormatRecord {
-  timestamp: Date;
-  parameterId: string;
-  value: number;
-  parameterName: string;
-  unit: string;
-  sourceFile: string;
-}
-
-export interface FileParseResult {
-  records: LongFormatRecord[];
+// Internal FileParseResult type with parameterIds for backward compatibility
+export interface InternalFileParseResult extends Omit<ImportedFileParseResult, 'parameterInfo'> {
   parameterIds: Set<string>;
-  timeRange: {
-    start: Date;
-    end: Date;
-  };
-  errors?: string[];
 }
 
-export interface MultiFileParseResult {
-  mergedData: ParsedCSVData;
-  fileResults: Record<string, FileParseResult>;
-  totalRecords: number;
-  duplicatesResolved: number;
-  warnings: string[];
+// Internal MultiFileParseResult type for csvParser internal use
+interface InternalMultiFileParseResult extends Omit<MultiFileParseResult, 'fileResults'> {
+  fileResults: Record<string, InternalFileParseResult>;
 }
+
+// Re-export the imported type for external use
+export type FileParseResult = InternalFileParseResult;
 
 // Type for chart data
 export type MultiSeriesData = [number[], ...number[][]];
@@ -110,7 +88,7 @@ export class CSVParser {
     }
 
     // Initialize parameters (skip first column which is timestamp)
-    const parameters: ParsedParameter[] = [];
+    const parameters: CSVParameter[] = [];
     for (let i = 1; i < parameterIds.length; i++) {
       // Clean parameter ID
       const cleanId = (parameterIds[i] || '').trim();
@@ -123,6 +101,7 @@ export class CSVParser {
         id: cleanId,
         name: (parameterNames[i] || '').trim() || cleanId,
         unit: (units[i] || '').trim() || '-',
+        columnIndex: i,
         data: []
       });
     }
@@ -196,7 +175,7 @@ export class CSVParser {
   }
 
   // Parse CSV and convert to Long Format for easier merging
-  static parseToLongFormat(file: File): Promise<FileParseResult> {
+  static parseToLongFormat(file: File): Promise<InternalFileParseResult> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
 
@@ -223,7 +202,7 @@ export class CSVParser {
     });
   }
 
-  static convertToLongFormat(csvText: string, fileName: string): FileParseResult {
+  static convertToLongFormat(csvText: string, fileName: string): InternalFileParseResult {
     const lines = csvText.trim().split('\n');
     
     if (lines.length < 4) {
@@ -366,9 +345,9 @@ export class CSVParser {
 
   // Merge multiple Long Format files with streaming/chunked processing
   static async mergeLongFormatFilesStreaming(
-    fileResults: FileParseResult[],
+    fileResults: InternalFileParseResult[],
     onProgress?: (progress: { current: number; total: number; memory?: number }) => void
-  ): Promise<MultiFileParseResult> {
+  ): Promise<InternalMultiFileParseResult> {
     const parameterMap: Record<string, { name: string; unit: string; sources: Set<string> }> = {};
     const warnings: string[] = [];
     let duplicatesResolved = 0;
@@ -455,7 +434,7 @@ export class CSVParser {
         fileResults: fileResults.reduce((acc, fr, idx) => {
           acc[`file_${idx}`] = fr;
           return acc;
-        }, {} as Record<string, FileParseResult>),
+        }, {} as Record<string, InternalFileParseResult>),
         totalRecords: allRecords.length,
         duplicatesResolved,
         warnings
@@ -479,7 +458,7 @@ export class CSVParser {
   }
 
   // Merge multiple Long Format files with batch processing (fallback for non-streaming)
-  static mergeLongFormatFiles(fileResults: FileParseResult[]): MultiFileParseResult {
+  static mergeLongFormatFiles(fileResults: InternalFileParseResult[]): InternalMultiFileParseResult {
     const parameterMap: Record<string, { name: string; unit: string; sources: Set<string> }> = {};
     const duplicateMap: Record<string, LongFormatRecord> = {};
     const warnings: string[] = [];
@@ -548,7 +527,7 @@ export class CSVParser {
         fileResults: fileResults.reduce((acc, fr, idx) => {
           acc[`file_${idx}`] = fr;
           return acc;
-        }, {} as Record<string, FileParseResult>),
+        }, {} as Record<string, InternalFileParseResult>),
         totalRecords: allRecords.length,
         duplicatesResolved,
         warnings
@@ -574,12 +553,12 @@ export class CSVParser {
     parameterInfo: Record<string, { name: string; unit: string; sources: Set<string> }>,
     onProgress?: (progress: { current: number; total: number; memory?: number }) => void
   ): Promise<ParsedCSVData> {
+    // Use Map for better memory efficiency
+    const timeMap = new Map<string, Map<string, number>>();
+    const timestamps = new Set<string>();
+    const parameterIds = new Set<string>();
+    
     try {
-      // Use Map for better memory efficiency
-      const timeMap = new Map<string, Map<string, number>>();
-      const timestamps = new Set<string>();
-      const parameterIds = new Set<string>();
-
       // Process records in smaller batches
       const config = getProcessingConfig();
       const BATCH_SIZE = config.batchSizes.streaming;
@@ -618,12 +597,13 @@ export class CSVParser {
       const sortedParameterIds = Array.from(parameterIds).sort();
 
       // Initialize parameters
-      const parameters: ParsedParameter[] = sortedParameterIds.map(id => {
+      const parameters: CSVParameter[] = sortedParameterIds.map((id, index) => {
         const info = parameterInfo[id];
         return {
           id,
           name: info?.name || id,
           unit: info?.unit || '-',
+          columnIndex: index + 1, // +1 because first column is timestamp
           data: []
         };
       });
@@ -689,12 +669,12 @@ export class CSVParser {
     records: LongFormatRecord[],
     parameterInfo: Record<string, { name: string; unit: string; sources: Set<string> }>
   ): ParsedCSVData {
+    // Group records by timestamp with batch processing
+    const timeMap: Record<string, Record<string, number>> = {};
+    const timestamps = new Set<string>();
+    const parameterIds = new Set<string>();
+    
     try {
-      // Group records by timestamp with batch processing
-      const timeMap: Record<string, Record<string, number>> = {};
-      const timestamps = new Set<string>();
-      const parameterIds = new Set<string>();
-
       // Process records in batches
       const config = getProcessingConfig();
       const BATCH_SIZE = config.batchSizes.merging;
@@ -718,12 +698,13 @@ export class CSVParser {
       const sortedParameterIds = Array.from(parameterIds).sort();
 
       // Initialize parameters
-      const parameters: ParsedParameter[] = sortedParameterIds.map(id => {
+      const parameters: CSVParameter[] = sortedParameterIds.map((id, index) => {
         const info = parameterInfo[id];
         return {
           id,
           name: info?.name || id,
           unit: info?.unit || '-',
+          columnIndex: index + 1, // +1 because first column is timestamp
           data: []
         };
       });
@@ -796,7 +777,7 @@ export class CSVParser {
   }
 
   // Convert ParsedCSVData to LongFormat
-  static toLongFormat(data: ParsedCSVData, sourceFile: string): FileParseResult {
+  static toLongFormat(data: ParsedCSVData, sourceFile: string): InternalFileParseResult {
     const records: LongFormatRecord[] = [];
     const parameterIds = new Set<string>();
     let minTime: Date | null = null;
