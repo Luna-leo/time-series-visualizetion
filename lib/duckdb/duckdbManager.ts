@@ -405,17 +405,22 @@ export class DuckDBManager {
 
       // First, read headers from the first file to understand the structure
       // Note: LIMIT = 3 is correct syntax for read_csv function parameters
+      // Alternative approach: use a subquery to avoid potential syntax issues
       const headerQuery = `
-        SELECT * FROM read_csv('${tempNames[0]}', 
-          AUTO_DETECT = FALSE,
-          HEADER = FALSE,
-          SKIP = 0,
-          LIMIT = 3
-        )
+        SELECT * FROM (
+          SELECT * FROM read_csv('${tempNames[0]}', 
+            AUTO_DETECT = FALSE,
+            HEADER = FALSE,
+            SKIP = 0
+          )
+        ) AS headers_table
+        LIMIT 3
       `;
       
       let headers: any[];
       try {
+        console.log('Executing header query:', headerQuery);
+        console.log('Using temp file name:', tempNames[0]);
         const headerResult = await this.conn.query(headerQuery);
         
         headers = headerResult.toArray();
