@@ -86,17 +86,11 @@ export function useLocalStorage() {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      // Prompt user to re-select the directory
-      // Due to browser security, we need user interaction
-      const handle = await window.showDirectoryPicker({
-        mode: 'readwrite',
-        startIn: 'documents',
-      });
-
-      // Verify it's the same directory
-      if (handle.name === state.lastUsedDirectory.name) {
-        const config = await state.fileSystemManager.initializeWithHandle(handle);
-        
+      // First try to use the persisted handle
+      const config = await state.fileSystemManager.tryReconnect();
+      
+      if (config) {
+        // Successfully reconnected using persisted handle
         setState(prev => ({
           ...prev,
           isInitialized: true,
@@ -109,8 +103,15 @@ export function useLocalStorage() {
           await state.duckdbManager.initialize();
         }
       } else {
-        // Different directory selected, use normal initialization
-        const config = await state.fileSystemManager.initializeWithHandle(handle);
+        // Persisted handle didn't work, prompt user to re-select
+        const handle = await window.showDirectoryPicker({
+          mode: 'readwrite',
+          startIn: 'documents',
+        });
+
+        // Use the selected directory
+        const newConfig = await state.fileSystemManager.initializeWithHandle(handle);
+        
         setState(prev => ({
           ...prev,
           isInitialized: true,
@@ -118,6 +119,7 @@ export function useLocalStorage() {
           error: null,
         }));
 
+        // Initialize DuckDB
         if (state.duckdbManager) {
           await state.duckdbManager.initialize();
         }

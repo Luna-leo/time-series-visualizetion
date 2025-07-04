@@ -10,6 +10,7 @@ import type {
   MachineDirectory 
 } from '../../types/fileSystem';
 import { SettingsManager } from '../settings/settingsManager';
+import { getIndexedDBHelper } from '../storage/indexedDBHelper';
 
 export class FileSystemManager {
   private rootHandle: FileSystemDirectoryHandle | null = null;
@@ -19,6 +20,7 @@ export class FileSystemManager {
     metadata: null,
   };
   private settingsManager = SettingsManager.getInstance();
+  private indexedDBHelper = getIndexedDBHelper();
 
   /**
    * Initialize file system with user-selected directory
@@ -36,6 +38,9 @@ export class FileSystemManager {
         lastUsedDirectoryName: this.rootHandle.name,
         lastAccessTime: new Date().toISOString(),
       });
+
+      // Save the directory handle to IndexedDB for reconnection
+      await this.indexedDBHelper.saveDirectoryHandle(this.rootHandle);
 
       // Create directory structure
       await this.setupDirectoryStructure();
@@ -64,14 +69,34 @@ export class FileSystemManager {
     }
 
     try {
-      // We need to prompt the user to re-select the directory
-      // Browser security doesn't allow automatic access without user interaction
-      // But we can show a more contextual message
+      // Try to retrieve the persisted handle from IndexedDB
+      const persistedHandle = await this.indexedDBHelper.getDirectoryHandle();
       
-      // Show a custom dialog or return null to show the reconnect UI
-      return null; // Will be handled by the UI layer
+      if (persistedHandle) {
+        // Check if permissions are still valid
+        const readPermission = await persistedHandle.queryPermission({ mode: 'read' });
+        const writePermission = await persistedHandle.queryPermission({ mode: 'readwrite' });
+        
+        if (readPermission === 'granted' && writePermission === 'granted') {
+          // Use the persisted handle
+          return await this.initializeWithHandle(persistedHandle);
+        } else {
+          // Request permissions again
+          const readRequest = await persistedHandle.requestPermission({ mode: 'read' });
+          const writeRequest = await persistedHandle.requestPermission({ mode: 'readwrite' });
+          
+          if (readRequest === 'granted' && writeRequest === 'granted') {
+            return await this.initializeWithHandle(persistedHandle);
+          }
+        }
+      }
+      
+      // If we can't use the persisted handle, return null to show the reconnect UI
+      return null;
     } catch (error) {
       console.error('Failed to reconnect to previous directory:', error);
+      // Remove invalid handle
+      await this.indexedDBHelper.removeDirectoryHandle();
       return null;
     }
   }
@@ -94,6 +119,9 @@ export class FileSystemManager {
         lastUsedDirectoryName: handle.name,
         lastAccessTime: new Date().toISOString(),
       });
+
+      // Save the directory handle to IndexedDB for reconnection
+      await this.indexedDBHelper.saveDirectoryHandle(handle);
 
       // Setup directory structure
       await this.setupDirectoryStructure();
@@ -363,6 +391,8 @@ export class FileSystemManager {
       lastUsedDirectoryName: undefined,
       lastAccessTime: undefined,
     });
+    // Also clear the persisted handle
+    this.indexedDBHelper.removeDirectoryHandle().catch(console.error);
   }
 
   /**
