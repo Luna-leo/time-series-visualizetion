@@ -217,7 +217,8 @@ export class DuckDBManager {
                 delim = ',',
                 quote = '"',
                 escape = '"',
-                null_padding = true
+                null_padding = true,
+                ignore_errors = true
               )
             ),
             existing_data AS (
@@ -245,7 +246,8 @@ export class DuckDBManager {
               delim = ',',
               quote = '"',
               escape = '"',
-              null_padding = true
+              null_padding = true,
+              ignore_errors = true
             )
           ) TO 'output.parquet' (FORMAT PARQUET)
         `;
@@ -446,7 +448,8 @@ export class DuckDBManager {
             delim = ',',
             quote = '"',
             escape = '"',
-            null_padding = true
+            null_padding = true,
+            ignore_errors = true
           )
         ) AS headers_table
         LIMIT 3
@@ -530,6 +533,7 @@ export class DuckDBManager {
             quote = '"',
             escape = '"',
             null_padding = true,
+            ignore_errors = true,
             timestampformat = '%Y-%m-%dT%H:%M:%S'
           )
           WHERE column${paramIndex + 1} IS NOT NULL
@@ -592,6 +596,9 @@ export class DuckDBManager {
       }
 
       if (onProgress) onProgress({ current: 1, total: 1, phase: 'Complete' });
+
+      // Add warning about potential encoding errors
+      warnings.push('ignore_errors=true が有効です。エンコーディングエラーのある行はスキップされた可能性があります。');
 
       return {
         data: outputData.buffer as ArrayBuffer,
