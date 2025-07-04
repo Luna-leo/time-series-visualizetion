@@ -210,11 +210,13 @@ export class DuckDBManager {
           COPY (
             WITH new_data AS (
               SELECT * FROM read_csv('${csvName}', 
+                auto_detect = false,
                 all_varchar = true,
                 header = false,
                 skip = ${skipRows},
                 delim = ',',
-                quote = '"'
+                quote = '"',
+                escape = '"'
               )
             ),
             existing_data AS (
@@ -235,11 +237,13 @@ export class DuckDBManager {
         finalQuery = `
           COPY (
             SELECT * FROM read_csv('${csvName}', 
+              auto_detect = false,
               all_varchar = true,
               header = false,
               skip = ${skipRows},
               delim = ',',
-              quote = '"'
+              quote = '"',
+              escape = '"'
             )
           ) TO 'output.parquet' (FORMAT PARQUET)
         `;
@@ -433,11 +437,13 @@ export class DuckDBManager {
       const headerQuery = `
         SELECT * FROM (
           SELECT * FROM read_csv('${tempNames[0]}', 
+            auto_detect = false,
             all_varchar = true,
             header = false,
             skip = 0,
             delim = ',',
-            quote = '"'
+            quote = '"',
+            escape = '"'
           )
         ) AS headers_table
         LIMIT 3
@@ -455,9 +461,33 @@ export class DuckDBManager {
         }
       } catch (error: any) {
         console.error('Error reading CSV headers:', error.message);
+        console.error('Query executed:', headerQuery);
+        
+        // Try to get more information about the CSV file
+        if (error.message?.includes('sniffing') || error.message?.includes('detect')) {
+          console.error('CSV auto-detection failed. Trying to read raw file content...');
+          try {
+            // Try to read the first few lines of the CSV file as raw text
+            const debugQuery = `
+              SELECT * FROM read_csv('${tempNames[0]}', 
+                auto_detect = false,
+                all_varchar = true,
+                header = false,
+                skip = 0,
+                delim = '\n',
+                quote = '',
+                escape = ''
+              ) LIMIT 5
+            `;
+            const rawContent = await this.conn.query(debugQuery);
+            console.error('First 5 lines of CSV file:', rawContent.toArray());
+          } catch (debugError: any) {
+            console.error('Failed to read raw CSV content:', debugError.message);
+          }
+        }
+        
         if (error.message?.includes('LIMIT') || error.message?.includes('Limit')) {
           console.error('Note: This error might be from the CSV content itself, not the query.');
-          console.error('The read_csv function uses "LIMIT = 3" syntax correctly.');
           warnings.push('CSV header reading failed. The file might contain invalid data.');
         }
         throw new Error(`Failed to read CSV headers: ${error.message}`);
@@ -489,11 +519,13 @@ export class DuckDBManager {
             CAST(column${paramIndex + 1} AS DOUBLE) as value,
             '${sourceFile}' as source_file
           FROM read_csv('${name}', 
+            auto_detect = false,
             all_varchar = true,
             header = false,
             skip = 3,
             delim = ',',
             quote = '"',
+            escape = '"',
             timestampformat = '%Y-%m-%dT%H:%M:%S'
           )
           WHERE column${paramIndex + 1} IS NOT NULL
