@@ -41,11 +41,20 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       return false;
     }
 
-    // Check file sizes
+    // Check individual file sizes
     const maxSizeBytes = maxSize * 1024 * 1024;
     const oversizedFiles = files.filter(file => file.size > maxSizeBytes);
     if (oversizedFiles.length > 0) {
-      setError(`Files must be less than ${maxSize}MB. Oversized files: ${oversizedFiles.map(f => f.name).join(', ')}`);
+      setError(`Files must be less than ${maxSize}MB each. Oversized files: ${oversizedFiles.map(f => f.name).join(', ')}`);
+      return false;
+    }
+
+    // Check total file size (max 200MB for all files combined)
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    const maxTotalSizeBytes = 200 * 1024 * 1024; // 200MB
+    if (totalSize > maxTotalSizeBytes) {
+      const totalSizeMB = Math.round(totalSize / (1024 * 1024));
+      setError(`Total file size (${totalSizeMB}MB) exceeds maximum allowed size of 200MB. Please split into smaller batches.`);
       return false;
     }
 

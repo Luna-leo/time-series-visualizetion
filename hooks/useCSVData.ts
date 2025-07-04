@@ -59,6 +59,7 @@ interface UseCSVDataReturn {
   clearData: () => void;
   importHistory: CSVImportMetadata[];
   uploadProgress?: { current: number; total: number; fileName: string };
+  mergeProgress?: { current: number; total: number; memory?: number };
 }
 
 export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps = {}): UseCSVDataReturn {
@@ -69,6 +70,7 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
   const [charts, setCharts] = useState<ChartMetadata[]>([]);
   const [importHistory, setImportHistory] = useState<CSVImportMetadata[]>([]);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string } | undefined>();
+  const [mergeProgress, setMergeProgress] = useState<{ current: number; total: number; memory?: number } | undefined>();
 
   const uploadCSV = useCallback(async (file: File, metadata?: Partial<CSVImportMetadata>, encoding?: 'UTF8' | 'SJIS' | 'EUCJP' | 'JIS' | 'AUTO') => {
     setIsLoading(true);
@@ -224,8 +226,21 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
         throw new Error('No files could be parsed successfully');
       }
       
-      // Merge all files
-      const mergeResult = CSVParser.mergeLongFormatFiles(fileResults);
+      // Merge all files with streaming if available
+      let mergeResult;
+      try {
+        // Try streaming approach first
+        setMergeProgress({ current: 0, total: 100 });
+        mergeResult = await CSVParser.mergeLongFormatFilesStreaming(fileResults, (progress) => {
+          setMergeProgress(progress);
+        });
+      } catch (streamError) {
+        console.warn('Streaming merge failed, falling back to standard merge:', streamError);
+        // Fallback to standard merge
+        mergeResult = CSVParser.mergeLongFormatFiles(fileResults);
+      } finally {
+        setMergeProgress(undefined);
+      }
       
       // Set the merged data for visualization
       setCSVData(mergeResult.mergedData);
@@ -419,5 +434,6 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
     clearData,
     importHistory,
     uploadProgress,
+    mergeProgress,
   };
 }
