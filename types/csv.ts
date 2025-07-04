@@ -53,14 +53,14 @@ export interface LongFormatRecord {
 
 export interface FileParseResult {
   records: LongFormatRecord[];
-  parameterInfo: Map<string, { name: string; unit: string }>;
+  parameterInfo: Record<string, { name: string; unit: string }>;
   timeRange: { start: Date; end: Date };
   errors?: string[];
 }
 
 export interface MultiFileParseResult {
   mergedData: ParsedCSVData;
-  fileResults: Map<string, FileParseResult>;
+  fileResults: Record<string, FileParseResult>;
   totalRecords: number;
   duplicatesResolved: number;
   warnings: string[];

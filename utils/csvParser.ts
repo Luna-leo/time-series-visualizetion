@@ -250,16 +250,16 @@ export class CSVParser {
   // Convert parsed CSV data to Long Format
   static toLongFormat(parsedData: ParsedCSVData, fileName: string): FileParseResult {
     const records: LongFormatRecord[] = [];
-    const parameterInfo = new Map<string, { name: string; unit: string }>();
+    const parameterInfo: Record<string, { name: string; unit: string }> = {};
     let minTime: Date | null = null;
     let maxTime: Date | null = null;
 
     // Build parameter info map
     parsedData.parameters.forEach(param => {
-      parameterInfo.set(param.id, {
+      parameterInfo[param.id] = {
         name: param.name,
         unit: param.unit
-      });
+      };
     });
 
     // Convert to long format records
@@ -293,121 +293,163 @@ export class CSVParser {
     };
   }
 
-  // Merge multiple Long Format files
+  // Merge multiple Long Format files with batch processing
   static mergeLongFormatFiles(fileResults: FileParseResult[]): MultiFileParseResult {
-    const allRecords: LongFormatRecord[] = [];
-    const parameterMap = new Map<string, { name: string; unit: string; sources: Set<string> }>();
-    const duplicateMap = new Map<string, LongFormatRecord>();
+    const parameterMap: Record<string, { name: string; unit: string; sources: Set<string> }> = {};
+    const duplicateMap: Record<string, LongFormatRecord> = {};
     const warnings: string[] = [];
     let duplicatesResolved = 0;
 
-    // Combine all records and detect duplicates
-    fileResults.forEach(fileResult => {
-      fileResult.records.forEach(record => {
-        const key = `${record.timestamp.toISOString()}_${record.parameterId}`;
+    // Process files in batches to avoid deep recursion
+    const BATCH_SIZE = 10000;
+    let processedRecords = 0;
+
+    try {
+      // Process each file
+      for (let fileIndex = 0; fileIndex < fileResults.length; fileIndex++) {
+        const fileResult = fileResults[fileIndex];
         
-        if (duplicateMap.has(key)) {
-          // Duplicate found
-          const existing = duplicateMap.get(key)!;
-          if (Math.abs(existing.value - record.value) > 0.0001) {
-            warnings.push(
-              `Duplicate data for ${record.parameterId} at ${record.timestamp.toISOString()}: ` +
-              `${existing.value} (${existing.sourceFile}) vs ${record.value} (${record.sourceFile}). ` +
-              `Using value from ${record.sourceFile}.`
-            );
+        // Process records in batches
+        for (let i = 0; i < fileResult.records.length; i += BATCH_SIZE) {
+          const batch = fileResult.records.slice(i, Math.min(i + BATCH_SIZE, fileResult.records.length));
+          
+          for (const record of batch) {
+            const key = `${record.timestamp.toISOString()}_${record.parameterId}`;
+            
+            if (duplicateMap[key]) {
+              // Duplicate found
+              const existing = duplicateMap[key];
+              if (Math.abs(existing.value - record.value) > 0.0001) {
+                warnings.push(
+                  `Duplicate data for ${record.parameterId} at ${record.timestamp.toISOString()}: ` +
+                  `${existing.value} (${existing.sourceFile}) vs ${record.value} (${record.sourceFile}). ` +
+                  `Using value from ${record.sourceFile}.`
+                );
+              }
+              duplicatesResolved++;
+            }
+            
+            duplicateMap[key] = record;
+
+            // Track parameter info
+            if (!parameterMap[record.parameterId]) {
+              parameterMap[record.parameterId] = {
+                name: record.parameterName,
+                unit: record.unit,
+                sources: new Set()
+              };
+            }
+            parameterMap[record.parameterId].sources.add(record.sourceFile);
+            
+            processedRecords++;
           }
-          duplicatesResolved++;
         }
-        
-        duplicateMap.set(key, record);
 
-        // Track parameter info
-        if (!parameterMap.has(record.parameterId)) {
-          parameterMap.set(record.parameterId, {
-            name: record.parameterName,
-            unit: record.unit,
-            sources: new Set()
-          });
+        // Collect errors
+        if (fileResult.errors) {
+          warnings.push(...fileResult.errors);
         }
-        parameterMap.get(record.parameterId)!.sources.add(record.sourceFile);
-      });
-
-      // Collect errors
-      if (fileResult.errors) {
-        warnings.push(...fileResult.errors);
       }
-    });
 
-    // Convert duplicateMap values to array
-    allRecords.push(...duplicateMap.values());
+      // Convert duplicateMap values to array
+      const allRecords = Object.values(duplicateMap);
 
-    // Convert back to Wide Format
-    const mergedData = CSVParser.longToWideFormat(allRecords, parameterMap);
+      // Convert back to Wide Format
+      const mergedData = CSVParser.longToWideFormat(allRecords, parameterMap);
 
-    return {
-      mergedData,
-      fileResults: new Map(fileResults.map((fr, idx) => [`file_${idx}`, fr])),
-      totalRecords: allRecords.length,
-      duplicatesResolved,
-      warnings
-    };
+      return {
+        mergedData,
+        fileResults: fileResults.reduce((acc, fr, idx) => {
+          acc[`file_${idx}`] = fr;
+          return acc;
+        }, {} as Record<string, FileParseResult>),
+        totalRecords: allRecords.length,
+        duplicatesResolved,
+        warnings
+      };
+    } catch (error) {
+      // Handle stack overflow or other errors
+      if (error instanceof RangeError && error.message.includes('Maximum call stack')) {
+        throw new Error('Files are too large to process. Please split into smaller files.');
+      }
+      throw error;
+    }
   }
 
-  // Convert Long Format back to Wide Format
+  // Convert Long Format back to Wide Format with batch processing
   static longToWideFormat(
     records: LongFormatRecord[],
-    parameterInfo: Map<string, { name: string; unit: string; sources: Set<string> }>
+    parameterInfo: Record<string, { name: string; unit: string; sources: Set<string> }>
   ): ParsedCSVData {
-    // Group records by timestamp
-    const timeMap = new Map<string, Map<string, number>>();
-    const timestamps = new Set<string>();
-    const parameterIds = new Set<string>();
+    try {
+      // Group records by timestamp with batch processing
+      const timeMap: Record<string, Record<string, number>> = {};
+      const timestamps = new Set<string>();
+      const parameterIds = new Set<string>();
 
-    records.forEach(record => {
-      const timeKey = record.timestamp.toISOString();
-      timestamps.add(timeKey);
-      parameterIds.add(record.parameterId);
+      // Process records in batches
+      const BATCH_SIZE = 10000;
+      for (let i = 0; i < records.length; i += BATCH_SIZE) {
+        const batch = records.slice(i, Math.min(i + BATCH_SIZE, records.length));
+        
+        for (const record of batch) {
+          const timeKey = record.timestamp.toISOString();
+          timestamps.add(timeKey);
+          parameterIds.add(record.parameterId);
 
-      if (!timeMap.has(timeKey)) {
-        timeMap.set(timeKey, new Map());
+          if (!timeMap[timeKey]) {
+            timeMap[timeKey] = {};
+          }
+          timeMap[timeKey][record.parameterId] = record.value;
+        }
       }
-      timeMap.get(timeKey)!.set(record.parameterId, record.value);
-    });
 
-    // Sort timestamps
-    const sortedTimestamps = Array.from(timestamps).sort();
-    const sortedParameterIds = Array.from(parameterIds).sort();
+      // Sort timestamps
+      const sortedTimestamps = Array.from(timestamps).sort();
+      const sortedParameterIds = Array.from(parameterIds).sort();
 
-    // Create parameters array
-    const parameters: CSVParameter[] = sortedParameterIds.map((id, index) => {
-      const info = parameterInfo.get(id) || { name: id, unit: '' };
-      return {
-        id,
-        name: info.name,
-        unit: info.unit,
-        columnIndex: index + 1,
-        data: []
-      };
-    });
-
-    // Fill data arrays
-    const timestampDates: Date[] = [];
-    sortedTimestamps.forEach(timeKey => {
-      timestampDates.push(new Date(timeKey));
-      const timeData = timeMap.get(timeKey)!;
-      
-      parameters.forEach(param => {
-        const value = timeData.get(param.id);
-        param.data.push(value !== undefined ? value : 0);
+      // Create parameters array
+      const parameters: CSVParameter[] = sortedParameterIds.map((id, index) => {
+        const info = parameterInfo[id] || { name: id, unit: '' };
+        return {
+          id,
+          name: info.name,
+          unit: info.unit,
+          columnIndex: index + 1,
+          data: []
+        };
       });
-    });
 
-    return {
-      timestamps: timestampDates,
-      parameters,
-      fileName: 'merged_data',
-      errors: undefined
-    };
+      // Fill data arrays in batches
+      const timestampDates: Date[] = [];
+      const TIMESTAMP_BATCH_SIZE = 1000;
+      
+      for (let i = 0; i < sortedTimestamps.length; i += TIMESTAMP_BATCH_SIZE) {
+        const timestampBatch = sortedTimestamps.slice(i, Math.min(i + TIMESTAMP_BATCH_SIZE, sortedTimestamps.length));
+        
+        for (const timeKey of timestampBatch) {
+          timestampDates.push(new Date(timeKey));
+          const timeData = timeMap[timeKey];
+          
+          for (const param of parameters) {
+            const value = timeData[param.id];
+            param.data.push(value !== undefined ? value : 0);
+          }
+        }
+      }
+
+      return {
+        timestamps: timestampDates,
+        parameters,
+        fileName: 'merged_data',
+        errors: undefined
+      };
+    } catch (error) {
+      if (error instanceof RangeError && error.message.includes('Maximum call stack')) {
+        throw new Error('Data is too large to convert. Please reduce the number of parameters or time points.');
+      }
+      throw error;
+    }
   }
 
   // Export ParsedCSVData back to CSV format

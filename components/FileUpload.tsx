@@ -120,11 +120,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   }, []);
 
   const removeFile = useCallback((index: number) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-    if (selectedFiles.length <= 1) {
-      setShowMetadataDialog(false);
-    }
-  }, [selectedFiles.length]);
+    setSelectedFiles(prev => {
+      const newFiles = prev.filter((_, i) => i !== index);
+      if (newFiles.length === 0) {
+        setShowMetadataDialog(false);
+      }
+      return newFiles;
+    });
+  }, []);
 
   return (
     <div className="w-full">
