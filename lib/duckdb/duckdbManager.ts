@@ -17,6 +17,42 @@ export class DuckDBManager {
   }
 
   /**
+   * Validate SQL query for common syntax errors
+   * Note: This is a basic check and doesn't replace DuckDB's own validation
+   */
+  private validateSQLQuery(sql: string): void {
+    // Check for incorrect LIMIT syntax in standard SQL queries (not in function parameters)
+    // This regex looks for LIMIT = pattern outside of function calls
+    const incorrectLimitPattern = /(?<!read_csv\([^)]*)\bLIMIT\s*=\s*\d+/i;
+    if (incorrectLimitPattern.test(sql)) {
+      console.warn('Warning: Detected "LIMIT = n" syntax in SQL query.');
+      console.warn('Standard SQL LIMIT clause should be "LIMIT n" without equals sign.');
+      console.warn('Note: "LIMIT = n" is correct only as a parameter in functions like read_csv().');
+    }
+  }
+
+  /**
+   * Escape single quotes for SQL string literals
+   * @param value - The value to escape
+   * @returns The escaped value
+   */
+  private escapeSQLString(value: string): string {
+    return value.replace(/'/g, "''");
+  }
+
+  /**
+   * Trim and escape a value for safe SQL usage
+   * @param value - The value to process
+   * @returns The trimmed and escaped value
+   */
+  private sanitizeForSQL(value: any): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return this.escapeSQLString(value.toString().trim());
+  }
+
+  /**
    * Initialize DuckDB-WASM
    */
   async initialize(): Promise<void> {
@@ -73,6 +109,15 @@ export class DuckDBManager {
     if (!this.conn) throw new Error('DuckDB not initialized');
 
     try {
+      // Validate SQL syntax
+      this.validateSQLQuery(sql);
+
+      // Log query in development mode for debugging
+      if (process.env.NODE_ENV === 'development' || process.env.DEBUG_SQL) {
+        console.log('Executing SQL query:', sql);
+        if (params) console.log('With parameters:', params);
+      }
+
       let result;
       if (params && params.length > 0) {
         // Use prepared statement with parameters
@@ -84,8 +129,22 @@ export class DuckDBManager {
         result = await this.conn.query(sql);
       }
       return result.toArray();
-    } catch (error) {
-      console.error('Query error:', sql, error);
+    } catch (error: any) {
+      // Enhanced error logging
+      console.error('SQL Query Error Details:');
+      console.error('Query:', sql);
+      if (params) console.error('Parameters:', params);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      
+      // Check for specific syntax errors
+      if (error.message?.includes('syntax error') || error.message?.includes('LIMIT')) {
+        console.error('Possible SQL syntax error detected. Please check the query syntax.');
+        console.error('Note: LIMIT clause in standard SQL should not have "=" sign.');
+        console.error('Correct: LIMIT 3');
+        console.error('Incorrect: LIMIT = 3');
+      }
+      
       throw error;
     }
   }
@@ -151,9 +210,15 @@ export class DuckDBManager {
           COPY (
             WITH new_data AS (
               SELECT * FROM read_csv('${csvName}', 
-                AUTO_DETECT = TRUE,
-                HEADER = TRUE,
-                SKIP = ${skipRows}
+                auto_detect = true,
+                all_varchar = true,
+                header = false,
+                skip = ${skipRows},
+                delim = ',',
+                quote = '"',
+                escape = '"',
+                null_padding = true,
+                ignore_errors = true
               )
             ),
             existing_data AS (
@@ -174,9 +239,15 @@ export class DuckDBManager {
         finalQuery = `
           COPY (
             SELECT * FROM read_csv('${csvName}', 
-              AUTO_DETECT = TRUE,
-              HEADER = TRUE,
-              SKIP = ${skipRows}
+              auto_detect = true,
+              all_varchar = true,
+              header = false,
+              skip = ${skipRows},
+              delim = ',',
+              quote = '"',
+              escape = '"',
+              null_padding = true,
+              ignore_errors = true
             )
           ) TO 'output.parquet' (FORMAT PARQUET)
         `;
@@ -366,44 +437,108 @@ export class DuckDBManager {
       if (onProgress) onProgress({ current: 0, total: 1, phase: 'Analyzing structure' });
 
       // First, read headers from the first file to understand the structure
-      const headerResult = await this.conn.query(`
-        SELECT * FROM read_csv('${tempNames[0]}', 
-          AUTO_DETECT = FALSE,
-          HEADER = FALSE,
-          SKIP = 0,
-          LIMIT = 3
-        )
-      `);
+      // Note: Using ALL_VARCHAR = TRUE to handle 3-row header format
+      const headerQuery = `
+        SELECT * FROM (
+          SELECT * FROM read_csv('${tempNames[0]}', 
+            auto_detect = true,
+            all_varchar = true,
+            header = false,
+            skip = 0,
+            delim = ',',
+            quote = '"',
+            escape = '"',
+            null_padding = true,
+            ignore_errors = true
+          )
+        ) AS headers_table
+        LIMIT 3
+      `;
       
-      const headers = headerResult.toArray();
-      if (headers.length < 3) {
-        throw new Error('CSV file must have at least 3 header rows');
+      let headers: any[];
+      try {
+        console.log('Executing header query:', headerQuery);
+        console.log('Using temp file name:', tempNames[0]);
+        const headerResult = await this.conn.query(headerQuery);
+        
+        headers = headerResult.toArray();
+        if (headers.length < 3) {
+          throw new Error('CSV file must have at least 3 header rows');
+        }
+      } catch (error: any) {
+        console.error('Error reading CSV headers:', error.message);
+        console.error('Query executed:', headerQuery);
+        
+        // Try to get more information about the CSV file
+        if (error.message?.includes('sniffing') || error.message?.includes('detect')) {
+          console.error('CSV auto-detection failed. Trying to read raw file content...');
+          try {
+            // Try to read the first few lines of the CSV file as raw text
+            const debugQuery = `
+              SELECT * FROM read_csv('${tempNames[0]}', 
+                auto_detect = false,
+                all_varchar = true,
+                header = false,
+                skip = 0,
+                delim = '\n',
+                quote = '',
+                escape = ''
+              ) LIMIT 5
+            `;
+            const rawContent = await this.conn.query(debugQuery);
+            console.error('First 5 lines of CSV file:', rawContent.toArray());
+          } catch (debugError: any) {
+            console.error('Failed to read raw CSV content:', debugError.message);
+          }
+        }
+        
+        if (error.message?.includes('LIMIT') || error.message?.includes('Limit')) {
+          console.error('Note: This error might be from the CSV content itself, not the query.');
+          warnings.push('CSV header reading failed. The file might contain invalid data.');
+        }
+        throw new Error(`Failed to read CSV headers: ${error.message}`);
       }
 
       // Extract parameter IDs from the first row (skip timestamp column)
-      const parameterIds = headers[0].slice(1).filter((id: any) => id && id.toString().trim());
+      const parameterIds = headers[0].slice(1)
+        .map((id: any) => id ? id.toString().trim() : '')
+        .filter((id: string) => id);
       
       // Phase 3: Convert to long format and merge
       if (onProgress) onProgress({ current: 0, total: 1, phase: 'Merging data' });
 
       // Create long format query for each file
       const longFormatQueries = tempNames.map((name, fileIndex) => {
-        const paramQueries = parameterIds.map((paramId: any, paramIndex: number) => `
+        const paramQueries = parameterIds.map((paramId: any, paramIndex: number) => {
+          // Safely process header values with trimming and escaping
+          const paramIdClean = this.sanitizeForSQL(paramId);
+          const paramName = this.sanitizeForSQL(headers[1][paramIndex + 1] || paramId);
+          const unit = this.sanitizeForSQL(headers[2][paramIndex + 1] || '-');
+          const sourceFile = this.sanitizeForSQL(csvFiles[fileIndex].name);
+          
+          return `
           SELECT 
             CAST(column${0} AS TIMESTAMP) as timestamp,
-            '${paramId}' as parameter_id,
-            '${headers[1][paramIndex + 1] || paramId}' as parameter_name,
-            '${headers[2][paramIndex + 1] || '-'}' as unit,
+            '${paramIdClean}' as parameter_id,
+            '${paramName}' as parameter_name,
+            '${unit}' as unit,
             CAST(column${paramIndex + 1} AS DOUBLE) as value,
-            '${csvFiles[fileIndex].name}' as source_file
+            '${sourceFile}' as source_file
           FROM read_csv('${name}', 
-            AUTO_DETECT = FALSE,
-            HEADER = FALSE,
-            SKIP = 3,
-            TIMESTAMPFORMAT = '%Y-%m-%dT%H:%M:%S'
+            auto_detect = true,
+            all_varchar = true,
+            header = false,
+            skip = 3,
+            delim = ',',
+            quote = '"',
+            escape = '"',
+            null_padding = true,
+            ignore_errors = true,
+            timestampformat = '%Y-%m-%dT%H:%M:%S'
           )
           WHERE column${paramIndex + 1} IS NOT NULL
-        `).join(' UNION ALL ');
+        `;
+        }).join(' UNION ALL ');
         
         return paramQueries;
       }).join(' UNION ALL ');
@@ -418,9 +553,10 @@ export class DuckDBManager {
       if (onProgress) onProgress({ current: 0, total: 1, phase: 'Converting to wide format' });
 
       // Build pivot query
-      const pivotColumns = parameterIds.map((paramId: any) => 
-        `MAX(CASE WHEN parameter_id = '${paramId}' THEN value END) as "${paramId}"`
-      ).join(', ');
+      const pivotColumns = parameterIds.map((paramId: any) => {
+        const paramIdClean = this.sanitizeForSQL(paramId);
+        return `MAX(CASE WHEN parameter_id = '${paramIdClean}' THEN value END) as "${paramIdClean}"`;
+      }).join(', ');
 
       const finalQuery = `
         COPY (
@@ -461,8 +597,11 @@ export class DuckDBManager {
 
       if (onProgress) onProgress({ current: 1, total: 1, phase: 'Complete' });
 
+      // Add warning about potential encoding errors
+      warnings.push('ignore_errors=true が有効です。エンコーディングエラーのある行はスキップされた可能性があります。');
+
       return {
-        data: outputData.buffer,
+        data: outputData.buffer as ArrayBuffer,
         recordCount,
         warnings
       };
