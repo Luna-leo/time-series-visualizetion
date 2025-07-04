@@ -206,16 +206,13 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
         setUploadProgress({ current: i + 1, total: files.length, fileName: file.name });
         
         try {
-          // Parse each file
-          const parsed = await parser.parseFile(file);
-          
-          // Convert to Long Format
-          const longFormatResult = CSVParser.toLongFormat(parsed, file.name);
+          // Parse each file to Long Format directly with encoding support
+          const longFormatResult = await CSVParser.parseToLongFormat(file, encoding);
           fileResults.push(longFormatResult);
           
           // Collect any parsing warnings
-          if (parsed.errors && parsed.errors.length > 0) {
-            errors.push(...parsed.errors.map(e => `${file.name}: ${e}`));
+          if (longFormatResult.errors && longFormatResult.errors.length > 0) {
+            errors.push(...longFormatResult.errors.map(e => `${file.name}: ${e}`));
           }
         } catch (fileError) {
           errors.push(`Failed to parse ${file.name}: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`);

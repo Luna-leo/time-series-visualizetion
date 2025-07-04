@@ -7,6 +7,7 @@ import {
   FileParseResult as ImportedFileParseResult, 
   MultiFileParseResult 
 } from '../types/csv';
+import { readCSVFileWithEncoding, detectEncoding, type SupportedEncoding } from '../utils/encoding';
 
 interface CSVRow {
   [key: string]: string;
@@ -29,45 +30,40 @@ export type FileParseResult = InternalFileParseResult;
 export type MultiSeriesData = [number[], ...number[][]];
 
 export class CSVParser {
-  private encoding?: string;
+  private encoding?: SupportedEncoding;
   private duckdbManager?: any;
   private config: ProcessingConfig;
 
-  constructor(options?: { encoding?: string; duckdbManager?: any; config?: ProcessingConfig }) {
-    this.encoding = options?.encoding;
+  constructor(options?: { encoding?: SupportedEncoding | string; duckdbManager?: any; config?: ProcessingConfig }) {
+    this.encoding = options?.encoding as SupportedEncoding | undefined;
     this.duckdbManager = options?.duckdbManager;
     this.config = options?.config || getProcessingConfig();
   }
 
   async parseFile(file: File): Promise<ParsedCSVData> {
-    return CSVParser.parse(file);
+    return CSVParser.parse(file, this.encoding);
   }
 
-  static parse(file: File): Promise<ParsedCSVData> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        if (!text) {
-          reject(new Error('Failed to read file'));
-          return;
-        }
-
-        try {
-          const parsedData = this.parseCSVWithSpecialHeader(text, file.name);
-          resolve(parsedData);
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      reader.onerror = () => {
-        reject(new Error('Failed to read file'));
-      };
-
-      reader.readAsText(file);
-    });
+  static async parse(file: File, encoding?: SupportedEncoding | string): Promise<ParsedCSVData> {
+    try {
+      // エンコーディングを指定して読み込み
+      const text = await readCSVFileWithEncoding(file, encoding as SupportedEncoding | undefined);
+      
+      // 実際に使用されたエンコーディングを検出
+      const buffer = await file.arrayBuffer();
+      const detectedEncoding = detectEncoding(buffer);
+      
+      const parsedData = this.parseCSVWithSpecialHeader(text, file.name);
+      // 検出されたエンコーディングを記録
+      parsedData.detectedEncoding = detectedEncoding;
+      
+      return parsedData;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to parse CSV file');
+    }
   }
 
   static parseCSVWithSpecialHeader(csvText: string, fileName: string): ParsedCSVData {
@@ -89,13 +85,29 @@ export class CSVParser {
 
     // Initialize parameters (skip first column which is timestamp)
     const parameters: CSVParameter[] = [];
+    const usedIds = new Set<string>();
+    
     for (let i = 1; i < parameterIds.length; i++) {
       // Clean parameter ID
-      const cleanId = (parameterIds[i] || '').trim();
+      let cleanId = (parameterIds[i] || '').trim();
       if (!cleanId) {
         console.warn(`Skipping empty parameter at column ${i + 1}`);
         continue;
       }
+
+      // Check for duplicate IDs and make unique if necessary
+      const originalId = cleanId;
+      let counter = 2;
+      while (usedIds.has(cleanId)) {
+        cleanId = `${originalId}_${counter}`;
+        counter++;
+      }
+      
+      if (originalId !== cleanId) {
+        console.warn(`Duplicate parameter ID '${originalId}' found at column ${i + 1}. Renamed to '${cleanId}'.`);
+      }
+      
+      usedIds.add(cleanId);
 
       parameters.push({
         id: cleanId,
@@ -175,31 +187,18 @@ export class CSVParser {
   }
 
   // Parse CSV and convert to Long Format for easier merging
-  static parseToLongFormat(file: File): Promise<InternalFileParseResult> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        if (!text) {
-          reject(new Error('Failed to read file'));
-          return;
-        }
-
-        try {
-          const longFormatData = this.convertToLongFormat(text, file.name);
-          resolve(longFormatData);
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      reader.onerror = () => {
-        reject(new Error('Failed to read file'));
-      };
-
-      reader.readAsText(file);
-    });
+  static async parseToLongFormat(file: File, encoding?: SupportedEncoding | string): Promise<InternalFileParseResult> {
+    try {
+      // エンコーディングを指定して読み込み
+      const text = await readCSVFileWithEncoding(file, encoding as SupportedEncoding | undefined);
+      const longFormatData = this.convertToLongFormat(text, file.name);
+      return longFormatData;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to parse CSV file to long format');
+    }
   }
 
   static convertToLongFormat(csvText: string, fileName: string): InternalFileParseResult {
@@ -222,11 +221,25 @@ export class CSVParser {
     // Track parameter IDs and create mapping
     const parameterIdSet = new Set<string>();
     const parameterInfo: { id: string; name: string; unit: string }[] = [];
+    const usedIds = new Set<string>();
     
     for (let i = 1; i < parameterIds.length; i++) {
-      const cleanId = (parameterIds[i] || '').trim();
+      let cleanId = (parameterIds[i] || '').trim();
       if (!cleanId) continue;
       
+      // Check for duplicate IDs and make unique if necessary
+      const originalId = cleanId;
+      let counter = 2;
+      while (usedIds.has(cleanId)) {
+        cleanId = `${originalId}_${counter}`;
+        counter++;
+      }
+      
+      if (originalId !== cleanId) {
+        console.warn(`Duplicate parameter ID '${originalId}' found at column ${i + 1}. Renamed to '${cleanId}'.`);
+      }
+      
+      usedIds.add(cleanId);
       parameterIdSet.add(cleanId);
       parameterInfo.push({
         id: cleanId,
