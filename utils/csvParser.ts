@@ -1,4 +1,5 @@
 import Papa from 'papaparse';
+import { getProcessingConfig, ProcessingConfig } from '../config/processing.config';
 
 interface CSVRow {
   [key: string]: string;
@@ -51,9 +52,13 @@ export type MultiSeriesData = [number[], ...number[][]];
 
 export class CSVParser {
   private encoding?: string;
+  private duckdbManager?: any;
+  private config: ProcessingConfig;
 
-  constructor(options?: { encoding?: string }) {
+  constructor(options?: { encoding?: string; duckdbManager?: any; config?: ProcessingConfig }) {
     this.encoding = options?.encoding;
+    this.duckdbManager = options?.duckdbManager;
+    this.config = options?.config || getProcessingConfig();
   }
 
   async parseFile(file: File): Promise<ParsedCSVData> {
@@ -128,7 +133,8 @@ export class CSVParser {
     const dataText = lines.slice(3).join('\n');
 
     let processedRows = 0;
-    const BATCH_SIZE = 1000;
+    const config = getProcessingConfig();
+    const BATCH_SIZE = config.batchSizes.csvParsing;
     const parsedResult = Papa.parse(dataText, {
       delimiter: ',',
       dynamicTyping: true,
@@ -329,6 +335,35 @@ export class CSVParser {
     };
   }
 
+  // Merge files using DuckDB when available and beneficial
+  static async mergeLongFormatFilesWithDuckDB(
+    files: File[],
+    duckdbManager: any,
+    onProgress?: (progress: { current: number; total: number; phase: string }) => void
+  ): Promise<MultiFileParseResult> {
+    try {
+      // Read all files to ArrayBuffer
+      const csvFiles = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          data: await file.arrayBuffer()
+        }))
+      );
+
+      // Use DuckDB to merge
+      const result = await duckdbManager.mergeCSVFilesWithDuckDB(csvFiles, onProgress);
+      
+      // Convert Parquet result back to ParsedCSVData format
+      // This would need proper implementation to read Parquet data
+      // For now, we'll throw an error to indicate this needs implementation
+      throw new Error('Parquet to ParsedCSVData conversion not yet implemented');
+      
+    } catch (error) {
+      console.error('DuckDB merge failed:', error);
+      throw error;
+    }
+  }
+
   // Merge multiple Long Format files with streaming/chunked processing
   static async mergeLongFormatFilesStreaming(
     fileResults: FileParseResult[],
@@ -347,7 +382,8 @@ export class CSVParser {
       const fileResult = fileResults[fileIndex];
       
       // Process records in smaller batches
-      const BATCH_SIZE = 5000; // Reduced batch size
+      const config = getProcessingConfig();
+      const BATCH_SIZE = config.batchSizes.streaming;
       
       for (let i = 0; i < fileResult.records.length; i += BATCH_SIZE) {
         const batch = fileResult.records.slice(i, Math.min(i + BATCH_SIZE, fileResult.records.length));
@@ -450,7 +486,8 @@ export class CSVParser {
     let duplicatesResolved = 0;
 
     // Process files in batches to avoid deep recursion
-    const BATCH_SIZE = 10000;
+    const config = getProcessingConfig();
+    const BATCH_SIZE = config.batchSizes.merging;
     let processedRecords = 0;
 
     try {
@@ -544,7 +581,8 @@ export class CSVParser {
       const parameterIds = new Set<string>();
 
       // Process records in smaller batches
-      const BATCH_SIZE = 5000;
+      const config = getProcessingConfig();
+      const BATCH_SIZE = config.batchSizes.streaming;
       
       for (let i = 0; i < records.length; i += BATCH_SIZE) {
         const batch = records.slice(i, Math.min(i + BATCH_SIZE, records.length));
@@ -592,7 +630,7 @@ export class CSVParser {
 
       // Fill data arrays with streaming
       const timestampDates: Date[] = [];
-      const TIMESTAMP_BATCH_SIZE = 1000;
+      const TIMESTAMP_BATCH_SIZE = config.batchSizes.conversion;
       
       for (let i = 0; i < sortedTimestamps.length; i += TIMESTAMP_BATCH_SIZE) {
         const timestampBatch = sortedTimestamps.slice(i, Math.min(i + TIMESTAMP_BATCH_SIZE, sortedTimestamps.length));
@@ -658,7 +696,8 @@ export class CSVParser {
       const parameterIds = new Set<string>();
 
       // Process records in batches
-      const BATCH_SIZE = 10000;
+      const config = getProcessingConfig();
+      const BATCH_SIZE = config.batchSizes.merging;
       for (let i = 0; i < records.length; i += BATCH_SIZE) {
         const batch = records.slice(i, Math.min(i + BATCH_SIZE, records.length));
         
@@ -691,7 +730,7 @@ export class CSVParser {
 
       // Fill data arrays in batches
       const timestampDates: Date[] = [];
-      const TIMESTAMP_BATCH_SIZE = 1000;
+      const TIMESTAMP_BATCH_SIZE = config.batchSizes.conversion;
       
       for (let i = 0; i < sortedTimestamps.length; i += TIMESTAMP_BATCH_SIZE) {
         const timestampBatch = sortedTimestamps.slice(i, Math.min(i + TIMESTAMP_BATCH_SIZE, sortedTimestamps.length));

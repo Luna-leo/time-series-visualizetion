@@ -226,16 +226,39 @@ export function useCSVData({ fileSystemManager, duckdbManager }: UseCSVDataProps
         throw new Error('No files could be parsed successfully');
       }
       
-      // Merge all files with streaming if available
+      // Check if we should use DuckDB based on file size and count
+      const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+      const avgRecordsPerFile = Math.round(totalSize / files.length / 100); // Rough estimate
+      const shouldUseDuckDB = duckdbManager?.isInitialized() && 
+        (totalSize > 100 * 1024 * 1024 || files.length > 10 || avgRecordsPerFile > 50000);
+
+      // Merge all files with appropriate method
       let mergeResult;
       try {
-        // Try streaming approach first
-        setMergeProgress({ current: 0, total: 100 });
-        mergeResult = await CSVParser.mergeLongFormatFilesStreaming(fileResults, (progress) => {
-          setMergeProgress(progress);
-        });
+        if (shouldUseDuckDB) {
+          // Use DuckDB for large datasets
+          console.log('Using DuckDB for merging large dataset');
+          setMergeProgress({ current: 0, total: 100 });
+          mergeResult = await CSVParser.mergeLongFormatFilesWithDuckDB(
+            files,
+            duckdbManager,
+            (progress) => {
+              setMergeProgress({
+                current: progress.current,
+                total: progress.total,
+                memory: 0 // DuckDB manages its own memory
+              });
+            }
+          );
+        } else {
+          // Try streaming approach first for medium datasets
+          setMergeProgress({ current: 0, total: 100 });
+          mergeResult = await CSVParser.mergeLongFormatFilesStreaming(fileResults, (progress) => {
+            setMergeProgress(progress);
+          });
+        }
       } catch (streamError) {
-        console.warn('Streaming merge failed, falling back to standard merge:', streamError);
+        console.warn('Merge failed, falling back to standard merge:', streamError);
         // Fallback to standard merge
         mergeResult = CSVParser.mergeLongFormatFiles(fileResults);
       } finally {
