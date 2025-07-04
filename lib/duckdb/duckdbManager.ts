@@ -410,14 +410,16 @@ export class DuckDBManager {
       // First, read headers from the first file to understand the structure
       // Note: Using ALL_VARCHAR = TRUE to handle 3-row header format
       const headerQuery = `
-        SELECT * FROM read_csv('${tempNames[0]}', 
-          ALL_VARCHAR = TRUE,
-          HEADER = FALSE,
-          SKIP = 0,
-          DELIMITER = ',',
-          QUOTE = '"',
-          LIMIT = 3
-        )
+        SELECT * FROM (
+          SELECT * FROM read_csv('${tempNames[0]}', 
+            ALL_VARCHAR = TRUE,
+            HEADER = FALSE,
+            SKIP = 0,
+            DELIMITER = ',',
+            QUOTE = '"'
+          )
+        ) AS headers_table
+        LIMIT 3
       `;
       
       let headers: any[];
