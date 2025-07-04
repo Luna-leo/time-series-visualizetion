@@ -33,7 +33,10 @@ export default function UnifiedChartPage() {
     fileSystemManager,
     duckdbManager,
     setupStorage,
-    resetStorage
+    resetStorage,
+    lastUsedDirectory,
+    canReconnect,
+    reconnectToLastDirectory
   } = useLocalStorage();
 
   // Load CSV data with storage managers
@@ -172,7 +175,16 @@ export default function UnifiedChartPage() {
 
   // Show storage setup if not initialized
   if (!isInitialized) {
-    return <StorageSetup onSetupComplete={setupStorage} />;
+    return (
+      <StorageSetup 
+        onSetupComplete={setupStorage}
+        fileSystemManager={fileSystemManager}
+        duckdbManager={duckdbManager}
+        lastUsedDirectory={lastUsedDirectory}
+        canReconnect={canReconnect}
+        onReconnect={reconnectToLastDirectory}
+      />
+    );
   }
 
   return (

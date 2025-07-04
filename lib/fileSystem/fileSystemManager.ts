@@ -9,6 +9,7 @@ import type {
   DirectoryStructure,
   MachineDirectory 
 } from '../../types/fileSystem';
+import { SettingsManager } from '../settings/settingsManager';
 
 export class FileSystemManager {
   private rootHandle: FileSystemDirectoryHandle | null = null;
@@ -17,6 +18,7 @@ export class FileSystemManager {
     duckdb: null,
     metadata: null,
   };
+  private settingsManager = SettingsManager.getInstance();
 
   /**
    * Initialize file system with user-selected directory
@@ -27,6 +29,12 @@ export class FileSystemManager {
       this.rootHandle = await window.showDirectoryPicker({
         mode: 'readwrite',
         startIn: 'documents',
+      });
+
+      // Save the directory name for future use
+      this.settingsManager.updateFileSystemSettings({
+        lastUsedDirectoryName: this.rootHandle.name,
+        lastAccessTime: new Date().toISOString(),
       });
 
       // Create directory structure
@@ -41,6 +49,61 @@ export class FileSystemManager {
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw new Error('User cancelled directory selection');
       }
+      throw error;
+    }
+  }
+
+  /**
+   * Try to reconnect to a previously used directory
+   */
+  async tryReconnect(): Promise<StorageConfig | null> {
+    const fileSystemSettings = this.settingsManager.getFileSystemSettings();
+    
+    if (!fileSystemSettings.lastUsedDirectoryName || !fileSystemSettings.autoReconnect) {
+      return null;
+    }
+
+    try {
+      // We need to prompt the user to re-select the directory
+      // Browser security doesn't allow automatic access without user interaction
+      // But we can show a more contextual message
+      
+      // Show a custom dialog or return null to show the reconnect UI
+      return null; // Will be handled by the UI layer
+    } catch (error) {
+      console.error('Failed to reconnect to previous directory:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Initialize with a specific directory handle (for reconnection)
+   */
+  async initializeWithHandle(handle: FileSystemDirectoryHandle): Promise<StorageConfig> {
+    try {
+      this.rootHandle = handle;
+
+      // Verify permissions
+      const permissionStatus = await this.checkPermissions();
+      if (!permissionStatus.canRead || !permissionStatus.canWrite) {
+        throw new Error('Insufficient permissions for the selected directory');
+      }
+
+      // Update last used directory
+      this.settingsManager.updateFileSystemSettings({
+        lastUsedDirectoryName: handle.name,
+        lastAccessTime: new Date().toISOString(),
+      });
+
+      // Setup directory structure
+      await this.setupDirectoryStructure();
+
+      return {
+        rootDirectory: this.rootHandle,
+        isInitialized: true,
+        storagePath: this.rootHandle.name,
+      };
+    } catch (error) {
       throw error;
     }
   }
@@ -276,6 +339,30 @@ export class FileSystemManager {
    */
   isInitialized(): boolean {
     return this.rootHandle !== null;
+  }
+
+  /**
+   * Get last used directory info
+   */
+  getLastUsedDirectoryInfo(): { name: string; lastAccessTime: string } | null {
+    const settings = this.settingsManager.getFileSystemSettings();
+    if (settings.lastUsedDirectoryName && settings.lastAccessTime) {
+      return {
+        name: settings.lastUsedDirectoryName,
+        lastAccessTime: settings.lastAccessTime,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Clear stored directory info
+   */
+  clearStoredDirectoryInfo(): void {
+    this.settingsManager.updateFileSystemSettings({
+      lastUsedDirectoryName: undefined,
+      lastAccessTime: undefined,
+    });
   }
 
   /**
