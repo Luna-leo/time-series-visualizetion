@@ -210,13 +210,14 @@ export class DuckDBManager {
           COPY (
             WITH new_data AS (
               SELECT * FROM read_csv('${csvName}', 
-                auto_detect = false,
+                auto_detect = true,
                 all_varchar = true,
                 header = false,
                 skip = ${skipRows},
                 delim = ',',
                 quote = '"',
-                escape = '"'
+                escape = '"',
+                null_padding = true
               )
             ),
             existing_data AS (
@@ -237,13 +238,14 @@ export class DuckDBManager {
         finalQuery = `
           COPY (
             SELECT * FROM read_csv('${csvName}', 
-              auto_detect = false,
+              auto_detect = true,
               all_varchar = true,
               header = false,
               skip = ${skipRows},
               delim = ',',
               quote = '"',
-              escape = '"'
+              escape = '"',
+              null_padding = true
             )
           ) TO 'output.parquet' (FORMAT PARQUET)
         `;
@@ -437,13 +439,14 @@ export class DuckDBManager {
       const headerQuery = `
         SELECT * FROM (
           SELECT * FROM read_csv('${tempNames[0]}', 
-            auto_detect = false,
+            auto_detect = true,
             all_varchar = true,
             header = false,
             skip = 0,
             delim = ',',
             quote = '"',
-            escape = '"'
+            escape = '"',
+            null_padding = true
           )
         ) AS headers_table
         LIMIT 3
@@ -519,13 +522,14 @@ export class DuckDBManager {
             CAST(column${paramIndex + 1} AS DOUBLE) as value,
             '${sourceFile}' as source_file
           FROM read_csv('${name}', 
-            auto_detect = false,
+            auto_detect = true,
             all_varchar = true,
             header = false,
             skip = 3,
             delim = ',',
             quote = '"',
             escape = '"',
+            null_padding = true,
             timestampformat = '%Y-%m-%dT%H:%M:%S'
           )
           WHERE column${paramIndex + 1} IS NOT NULL
