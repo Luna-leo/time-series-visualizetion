@@ -404,12 +404,11 @@ export class DuckDBManager {
       if (onProgress) onProgress({ current: 0, total: 1, phase: 'Analyzing structure' });
 
       // First, read headers from the first file to understand the structure
-      // Note: LIMIT = 3 is correct syntax for read_csv function parameters
-      // Alternative approach: use a subquery to avoid potential syntax issues
+      // Note: Using AUTO_DETECT = TRUE to automatically detect column types
       const headerQuery = `
         SELECT * FROM (
           SELECT * FROM read_csv('${tempNames[0]}', 
-            AUTO_DETECT = FALSE,
+            AUTO_DETECT = TRUE,
             HEADER = FALSE,
             SKIP = 0
           )
@@ -454,7 +453,7 @@ export class DuckDBManager {
             CAST(column${paramIndex + 1} AS DOUBLE) as value,
             '${csvFiles[fileIndex].name}' as source_file
           FROM read_csv('${name}', 
-            AUTO_DETECT = FALSE,
+            AUTO_DETECT = TRUE,
             HEADER = FALSE,
             SKIP = 3,
             TIMESTAMPFORMAT = '%Y-%m-%dT%H:%M:%S'
