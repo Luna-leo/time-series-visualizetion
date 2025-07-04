@@ -189,11 +189,11 @@ export class DuckDBManager {
           COPY (
             WITH new_data AS (
               SELECT * FROM read_csv('${csvName}', 
-                ALL_VARCHAR = TRUE,
-                HEADER = FALSE,
-                SKIP = ${skipRows},
-                DELIMITER = ',',
-                QUOTE = '"'
+                all_varchar = true,
+                header = false,
+                skip = ${skipRows},
+                delim = ',',
+                quote = '"'
               )
             ),
             existing_data AS (
@@ -214,11 +214,11 @@ export class DuckDBManager {
         finalQuery = `
           COPY (
             SELECT * FROM read_csv('${csvName}', 
-              ALL_VARCHAR = TRUE,
-              HEADER = FALSE,
-              SKIP = ${skipRows},
-              DELIMITER = ',',
-              QUOTE = '"'
+              all_varchar = true,
+              header = false,
+              skip = ${skipRows},
+              delim = ',',
+              quote = '"'
             )
           ) TO 'output.parquet' (FORMAT PARQUET)
         `;
@@ -412,11 +412,11 @@ export class DuckDBManager {
       const headerQuery = `
         SELECT * FROM (
           SELECT * FROM read_csv('${tempNames[0]}', 
-            ALL_VARCHAR = TRUE,
-            HEADER = FALSE,
-            SKIP = 0,
-            DELIMITER = ',',
-            QUOTE = '"'
+            all_varchar = true,
+            header = false,
+            skip = 0,
+            delim = ',',
+            quote = '"'
           )
         ) AS headers_table
         LIMIT 3
@@ -459,12 +459,12 @@ export class DuckDBManager {
             CAST(column${paramIndex + 1} AS DOUBLE) as value,
             '${csvFiles[fileIndex].name}' as source_file
           FROM read_csv('${name}', 
-            ALL_VARCHAR = TRUE,
-            HEADER = FALSE,
-            SKIP = 3,
-            DELIMITER = ',',
-            QUOTE = '"',
-            TIMESTAMPFORMAT = '%Y-%m-%dT%H:%M:%S'
+            all_varchar = true,
+            header = false,
+            skip = 3,
+            delim = ',',
+            quote = '"',
+            timestampformat = '%Y-%m-%dT%H:%M:%S'
           )
           WHERE column${paramIndex + 1} IS NOT NULL
         `).join(' UNION ALL ');
