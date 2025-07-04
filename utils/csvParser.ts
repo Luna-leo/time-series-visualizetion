@@ -1,5 +1,13 @@
 import Papa from 'papaparse';
-import type { ParsedCSVData, CSVParameter, CSVHeader, CSVParseOptions } from '../types/csv';
+import type { 
+  ParsedCSVData, 
+  CSVParameter, 
+  CSVHeader, 
+  CSVParseOptions, 
+  LongFormatRecord, 
+  FileParseResult,
+  MultiFileParseResult 
+} from '../types/csv';
 import { readCSVFileWithEncoding, detectEncoding, isValidUTF8, SupportedEncoding } from './encoding';
 
 const DEFAULT_OPTIONS: CSVParseOptions = {
@@ -237,5 +245,196 @@ export class CSVParser {
       const param = parsedData.parameters.find(p => p.id === id);
       return param ? `${param.name} (${param.unit})` : id;
     });
+  }
+
+  // Convert parsed CSV data to Long Format
+  static toLongFormat(parsedData: ParsedCSVData, fileName: string): FileParseResult {
+    const records: LongFormatRecord[] = [];
+    const parameterInfo = new Map<string, { name: string; unit: string }>();
+    let minTime: Date | null = null;
+    let maxTime: Date | null = null;
+
+    // Build parameter info map
+    parsedData.parameters.forEach(param => {
+      parameterInfo.set(param.id, {
+        name: param.name,
+        unit: param.unit
+      });
+    });
+
+    // Convert to long format records
+    parsedData.timestamps.forEach((timestamp, timeIndex) => {
+      parsedData.parameters.forEach(param => {
+        if (timeIndex < param.data.length) {
+          records.push({
+            timestamp,
+            parameterId: param.id,
+            value: param.data[timeIndex],
+            parameterName: param.name,
+            unit: param.unit,
+            sourceFile: fileName
+          });
+        }
+      });
+
+      // Track time range
+      if (!minTime || timestamp < minTime) minTime = timestamp;
+      if (!maxTime || timestamp > maxTime) maxTime = timestamp;
+    });
+
+    return {
+      records,
+      parameterInfo,
+      timeRange: {
+        start: minTime || new Date(),
+        end: maxTime || new Date()
+      },
+      errors: parsedData.errors
+    };
+  }
+
+  // Merge multiple Long Format files
+  static mergeLongFormatFiles(fileResults: FileParseResult[]): MultiFileParseResult {
+    const allRecords: LongFormatRecord[] = [];
+    const parameterMap = new Map<string, { name: string; unit: string; sources: Set<string> }>();
+    const duplicateMap = new Map<string, LongFormatRecord>();
+    const warnings: string[] = [];
+    let duplicatesResolved = 0;
+
+    // Combine all records and detect duplicates
+    fileResults.forEach(fileResult => {
+      fileResult.records.forEach(record => {
+        const key = `${record.timestamp.toISOString()}_${record.parameterId}`;
+        
+        if (duplicateMap.has(key)) {
+          // Duplicate found
+          const existing = duplicateMap.get(key)!;
+          if (Math.abs(existing.value - record.value) > 0.0001) {
+            warnings.push(
+              `Duplicate data for ${record.parameterId} at ${record.timestamp.toISOString()}: ` +
+              `${existing.value} (${existing.sourceFile}) vs ${record.value} (${record.sourceFile}). ` +
+              `Using value from ${record.sourceFile}.`
+            );
+          }
+          duplicatesResolved++;
+        }
+        
+        duplicateMap.set(key, record);
+
+        // Track parameter info
+        if (!parameterMap.has(record.parameterId)) {
+          parameterMap.set(record.parameterId, {
+            name: record.parameterName,
+            unit: record.unit,
+            sources: new Set()
+          });
+        }
+        parameterMap.get(record.parameterId)!.sources.add(record.sourceFile);
+      });
+
+      // Collect errors
+      if (fileResult.errors) {
+        warnings.push(...fileResult.errors);
+      }
+    });
+
+    // Convert duplicateMap values to array
+    allRecords.push(...duplicateMap.values());
+
+    // Convert back to Wide Format
+    const mergedData = CSVParser.longToWideFormat(allRecords, parameterMap);
+
+    return {
+      mergedData,
+      fileResults: new Map(fileResults.map((fr, idx) => [`file_${idx}`, fr])),
+      totalRecords: allRecords.length,
+      duplicatesResolved,
+      warnings
+    };
+  }
+
+  // Convert Long Format back to Wide Format
+  static longToWideFormat(
+    records: LongFormatRecord[],
+    parameterInfo: Map<string, { name: string; unit: string; sources: Set<string> }>
+  ): ParsedCSVData {
+    // Group records by timestamp
+    const timeMap = new Map<string, Map<string, number>>();
+    const timestamps = new Set<string>();
+    const parameterIds = new Set<string>();
+
+    records.forEach(record => {
+      const timeKey = record.timestamp.toISOString();
+      timestamps.add(timeKey);
+      parameterIds.add(record.parameterId);
+
+      if (!timeMap.has(timeKey)) {
+        timeMap.set(timeKey, new Map());
+      }
+      timeMap.get(timeKey)!.set(record.parameterId, record.value);
+    });
+
+    // Sort timestamps
+    const sortedTimestamps = Array.from(timestamps).sort();
+    const sortedParameterIds = Array.from(parameterIds).sort();
+
+    // Create parameters array
+    const parameters: CSVParameter[] = sortedParameterIds.map((id, index) => {
+      const info = parameterInfo.get(id) || { name: id, unit: '' };
+      return {
+        id,
+        name: info.name,
+        unit: info.unit,
+        columnIndex: index + 1,
+        data: []
+      };
+    });
+
+    // Fill data arrays
+    const timestampDates: Date[] = [];
+    sortedTimestamps.forEach(timeKey => {
+      timestampDates.push(new Date(timeKey));
+      const timeData = timeMap.get(timeKey)!;
+      
+      parameters.forEach(param => {
+        const value = timeData.get(param.id);
+        param.data.push(value !== undefined ? value : 0);
+      });
+    });
+
+    return {
+      timestamps: timestampDates,
+      parameters,
+      fileName: 'merged_data',
+      errors: undefined
+    };
+  }
+
+  // Export ParsedCSVData back to CSV format
+  static exportToCSV(data: ParsedCSVData): string {
+    const lines: string[] = [];
+    
+    // Header row 1: Parameter IDs
+    const headerIds = ['timestamp', ...data.parameters.map(p => p.id)];
+    lines.push(headerIds.join(','));
+    
+    // Header row 2: Parameter Names
+    const headerNames = ['timestamp', ...data.parameters.map(p => p.name)];
+    lines.push(headerNames.join(','));
+    
+    // Header row 3: Units
+    const headerUnits = ['', ...data.parameters.map(p => p.unit)];
+    lines.push(headerUnits.join(','));
+    
+    // Data rows
+    data.timestamps.forEach((timestamp, index) => {
+      const row = [timestamp.toISOString()];
+      data.parameters.forEach(param => {
+        row.push(param.data[index]?.toString() || '');
+      });
+      lines.push(row.join(','));
+    });
+    
+    return lines.join('\n');
   }
 }

@@ -40,3 +40,28 @@ export interface ChartConfiguration {
   parameterIds: string[];
   gridPosition?: { row: number; col: number };
 }
+
+// Long Format data structure for multi-file merging
+export interface LongFormatRecord {
+  timestamp: Date;
+  parameterId: string;
+  value: number;
+  parameterName: string;
+  unit: string;
+  sourceFile: string;
+}
+
+export interface FileParseResult {
+  records: LongFormatRecord[];
+  parameterInfo: Map<string, { name: string; unit: string }>;
+  timeRange: { start: Date; end: Date };
+  errors?: string[];
+}
+
+export interface MultiFileParseResult {
+  mergedData: ParsedCSVData;
+  fileResults: Map<string, FileParseResult>;
+  totalRecords: number;
+  duplicatesResolved: number;
+  warnings: string[];
+}

@@ -12,14 +12,20 @@ export interface CSVMetadata {
 
 interface MetadataInputDialogProps {
   fileName: string;
+  files?: File[];
   onSubmit: (metadata: CSVMetadata) => void;
   onCancel: () => void;
+  onRemoveFile?: (index: number) => void;
+  multiple?: boolean;
 }
 
 export const MetadataInputDialog: React.FC<MetadataInputDialogProps> = ({
   fileName,
+  files,
   onSubmit,
   onCancel,
+  onRemoveFile,
+  multiple = false,
 }) => {
   const [plant, setPlant] = useState('');
   const [machineNo, setMachineNo] = useState('');
@@ -73,7 +79,35 @@ export const MetadataInputDialog: React.FC<MetadataInputDialogProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg max-w-md w-full p-6">
         <h2 className="text-xl font-bold mb-4">CSV Import Metadata</h2>
-        <p className="text-sm text-gray-600 mb-4">File: {fileName}</p>
+        <p className="text-sm text-gray-600 mb-4">
+          {multiple ? `Importing ${files?.length || 0} files` : `File: ${fileName}`}
+        </p>
+        
+        {/* File list for multiple files */}
+        {multiple && files && files.length > 0 && (
+          <div className="mb-4 max-h-32 overflow-y-auto border rounded p-2">
+            <h4 className="text-sm font-semibold mb-2">Selected Files:</h4>
+            <ul className="space-y-1">
+              {files.map((file, index) => (
+                <li key={index} className="flex items-center justify-between text-xs">
+                  <span className="truncate flex-1">{file.name}</span>
+                  <span className="text-gray-500 ml-2">
+                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                  </span>
+                  {onRemoveFile && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveFile(index)}
+                      className="ml-2 text-red-500 hover:text-red-700"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Required Fields */}

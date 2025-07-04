@@ -5,7 +5,7 @@ import { ChartPageHeader } from '../components/ChartPageHeader';
 import { FileUpload } from '../components/FileUpload';
 import { ChartCreator } from '../components/ChartCreator';
 import { ChartGrid } from '../components/ChartGrid';
-import { ProgressBar } from '../components/common/ProgressBar';
+import type { CSVMetadata } from '../components/MetadataInputDialog';
 import { StorageSetup } from '../components/StorageSetup';
 import { DataQueryPanel } from '../components/DataQueryPanel';
 import { useChartDimensions } from '../hooks/useChartDimensions';
@@ -16,6 +16,7 @@ import { usePagination } from '../hooks/usePagination';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { GRID_CONFIGURATIONS } from '../constants/chartTheme';
 import type { GridSize } from '../types/chart';
+import type { ChartConfiguration } from '../types/csv';
 
 export default function UnifiedChartPage() {
   const [gridSize, setGridSize] = useState<GridSize>('2x2');
@@ -41,10 +42,12 @@ export default function UnifiedChartPage() {
     charts, 
     isLoading, 
     error, 
-    uploadCSV, 
+    uploadCSV,
+    uploadMultipleCSVs, 
     createChart,
     clearData,
-    importHistory 
+    importHistory,
+    uploadProgress 
   } = useCSVData({
     fileSystemManager,
     duckdbManager
@@ -83,18 +86,27 @@ export default function UnifiedChartPage() {
   });
 
   // Handle file upload with metadata
-  const handleFileUpload = useCallback(async (file: File, metadata: any) => {
+  const handleFileUpload = useCallback(async (file: File, metadata: CSVMetadata) => {
     await uploadCSV(file, metadata, metadata.encoding);
   }, [uploadCSV]);
 
+  // Handle multiple files upload
+  const handleMultipleFilesUpload = useCallback(async (files: File[], metadata: CSVMetadata) => {
+    await uploadMultipleCSVs(files, metadata, metadata.encoding);
+  }, [uploadMultipleCSVs]);
+
   // Handle chart creation
-  const handleCreateChart = useCallback((config: any) => {
+  const handleCreateChart = useCallback((config: ChartConfiguration) => {
     createChart(config);
     setShowChartCreator(false);
   }, [createChart]);
 
   // Handle chart creation from query
-  const handleCreateChartFromQuery = useCallback((chartData: any) => {
+  const handleCreateChartFromQuery = useCallback((chartData: {
+    title: string;
+    parameters: string[];
+    data: Array<Record<string, unknown>>;
+  }) => {
     // Transform query data to chart format
     const config = {
       id: `query_${Date.now()}`,
@@ -197,8 +209,29 @@ export default function UnifiedChartPage() {
             <div className="space-y-6">
               {/* Upload CSV Section */}
               <div className="border rounded-lg p-6">
-                <h3 className="text-lg font-semibold mb-4">Upload New CSV File</h3>
-                <FileUpload onFileSelect={handleFileUpload} disabled={isLoading} />
+                <h3 className="text-lg font-semibold mb-4">Upload CSV Files</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Select one or multiple CSV files to import. Files will be automatically merged based on timestamps and parameters.
+                </p>
+                <FileUpload 
+                  onFileSelect={handleFileUpload} 
+                  onMultipleFilesSelect={handleMultipleFilesUpload}
+                  disabled={isLoading} 
+                  multiple={true}
+                />
+                {uploadProgress && (
+                  <div className="mt-4">
+                    <div className="text-sm text-gray-600">
+                      Processing file {uploadProgress.current} of {uploadProgress.total}: {uploadProgress.fileName}
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                      <div 
+                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               
               {/* Query Stored Data Section */}
