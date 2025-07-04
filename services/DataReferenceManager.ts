@@ -135,14 +135,50 @@ export class DataReferenceManager {
   }
   
   private shouldPersist(data: ParsedCSVData): boolean {
-    // Persist if data is larger than 10MB
-    const estimatedSize = data.timestamps.length * data.parameters.length * 8;
-    return estimatedSize > 10 * 1024 * 1024;
+    // Always persist data for reusability
+    // All CSV data will be converted to Parquet format
+    return true;
   }
   
   private async persistData(id: string, data: ParsedCSVData): Promise<void> {
-    // Implementation depends on storage manager
-    // This would convert to Parquet and store
+    if (!this.storageManager) {
+      throw new Error('Storage manager not available');
+    }
+
+    // Extract metadata from filename (e.g., "PLANT1_MACHINE001_20240101.csv")
+    const fileNameParts = data.fileName.replace('.csv', '').split('_');
+    const metadata = {
+      plant: fileNameParts[0] || 'DEFAULT',
+      machineNo: fileNameParts[1] || '001',
+      fileName: data.fileName,
+      totalRows: data.timestamps.length,
+      totalParameters: data.parameters.length,
+      importedAt: new Date().toISOString()
+    };
+
+    const machineId = `${metadata.plant}_${metadata.machineNo}`;
+
+    try {
+      // Save data using storage manager
+      await this.storageManager.saveData(data, machineId, metadata);
+      
+      // Update the data reference to indicate successful persistence
+      const reference = this.dataReferences.get(id);
+      if (reference) {
+        reference.storageLocation = 'filesystem';
+        // Store additional metadata for faster retrieval
+        (reference as any).storageMetadata = {
+          machineId,
+          plant: metadata.plant,
+          machineNo: metadata.machineNo
+        };
+      }
+
+      console.log(`Successfully persisted data for ${machineId}`);
+    } catch (error) {
+      console.error('Failed to persist data:', error);
+      throw error;
+    }
   }
   
   private updateCacheSize(data: ParsedCSVData): void {
@@ -261,14 +297,31 @@ export class DataReferenceManager {
     return { timestamps: downsampledTimestamps, values: downsampledValues };
   }
   
-  private async loadFromStorage(request: DataRequest): Promise<any> {
-    // Implementation depends on storage manager
-    throw new Error('Storage loading not implemented');
+  private async loadFromStorage(request: DataRequest): Promise<ParsedCSVData> {
+    if (!this.storageManager) {
+      throw new Error('Storage manager not available');
+    }
+
+    const reference = this.dataReferences.get(request.dataReference);
+    if (!reference) {
+      throw new Error(`Data reference not found: ${request.dataReference}`);
+    }
+
+    // Get storage metadata
+    const storageMetadata = (reference as any).storageMetadata;
+    if (!storageMetadata || !storageMetadata.machineId) {
+      throw new Error('Storage metadata not available');
+    }
+
+    const { machineId } = storageMetadata;
+    
+    // Load data from storage
+    return await this.storageManager.loadData(machineId, request.timeRange);
   }
   
-  private processStorageData(data: any, request: DataRequest): DataResponse {
-    // Implementation depends on storage format
-    throw new Error('Storage processing not implemented');
+  private processStorageData(data: ParsedCSVData, request: DataRequest): DataResponse {
+    // Use the same logic as extractDataFromCache
+    return this.extractDataFromCache(data, request);
   }
   
   clearCache(): void {

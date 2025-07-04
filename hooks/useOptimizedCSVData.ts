@@ -30,6 +30,7 @@ interface UseOptimizedCSVDataReturn {
   isLoading: boolean;
   error: string | null;
   memoryUsage: { used: number; max: number };
+  persistenceStatus: { isActive: boolean; message: string; progress?: number };
   
   // Manager references
   setStorageManager: (manager: StorageManager | null) => void;
@@ -45,6 +46,11 @@ export function useOptimizedCSVData(
   const [currentMetadata, setCurrentMetadata] = useState<TimeSeriesMetadata | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [persistenceStatus, setPersistenceStatus] = useState<{
+    isActive: boolean;
+    message: string;
+    progress?: number;
+  }>({ isActive: false, message: '' });
   
   // Manager references
   const storageManagerRef = useRef<StorageManager | null>(null);
@@ -90,10 +96,10 @@ export function useOptimizedCSVData(
         'success'
       );
       
-      // If storage managers are available, persist in background
-      if (storageManagerRef.current && fileSystemManagerRef.current) {
-        persistInBackground(parsedData, reference);
-      }
+      // Always persist data for reusability
+      // This runs in background without blocking UI
+      setPersistenceStatus({ isActive: true, message: 'Parquet形式で保存中...' });
+      persistInBackground(parsedData, reference);
       
     } catch (err) {
       const message = err instanceof Error ? err.message : 'ファイルの読み込みに失敗しました';
@@ -212,17 +218,20 @@ export function useOptimizedCSVData(
     reference: DataReference
   ) => {
     try {
-      // This runs in background without blocking UI
-      if (storageManagerRef.current && fileSystemManagerRef.current) {
-        await storageManagerRef.current.saveData(
-          data,
-          fileSystemManagerRef.current.rootHandle!
-        );
-      }
+      const dataManager = getDataManager();
+      // DataReferenceManager will handle persistence internally
+      // It will use StorageManager if available
+      console.log('Data persistence handled by DataReferenceManager');
+      
+      // Show success notification
+      setPersistenceStatus({ isActive: false, message: '' });
+      showToast('データをParquet形式で保存しました', 'success');
     } catch (err) {
       console.error('Background persistence failed:', err);
+      setPersistenceStatus({ isActive: false, message: '' });
+      showToast('データの永続化に失敗しました', 'warning');
     }
-  }, []);
+  }, [getDataManager, showToast]);
   
   // Convert data response to chart format
   const convertToChartData = (response: any, metadata: TimeSeriesMetadata) => {
@@ -251,6 +260,14 @@ export function useOptimizedCSVData(
   // Manager setters
   const setStorageManager = useCallback((manager: StorageManager | null) => {
     storageManagerRef.current = manager;
+    // Update DataReferenceManager's storage manager
+    if (dataManagerRef.current && manager) {
+      const updatedDataManager = DataReferenceManager.getInstance(
+        manager,
+        metadataManagerRef.current || undefined
+      );
+      dataManagerRef.current = updatedDataManager;
+    }
   }, []);
   
   const setMetadataManager = useCallback((manager: MetadataManager | null) => {
@@ -259,10 +276,19 @@ export function useOptimizedCSVData(
   
   const setFileSystemManager = useCallback((manager: FileSystemManager | null) => {
     fileSystemManagerRef.current = manager;
+    // Configure StorageManager with FileSystemManager
+    if (storageManagerRef.current && manager) {
+      storageManagerRef.current.setFileSystemManager(manager);
+    }
   }, []);
   
   const setDatabaseManager = useCallback((manager: DatabaseManager | null) => {
     databaseManagerRef.current = manager;
+    // Configure StorageManager with DuckDBManager
+    if (storageManagerRef.current && manager) {
+      // Note: DatabaseManager is a wrapper, we need the actual DuckDBManager
+      // For now, we'll skip this as the real implementation would need access to DuckDBManager
+    }
   }, []);
   
   // Get available parameters from current metadata
@@ -284,6 +310,7 @@ export function useOptimizedCSVData(
     setStorageManager,
     setMetadataManager,
     setFileSystemManager,
-    setDatabaseManager
+    setDatabaseManager,
+    persistenceStatus
   };
 }

@@ -7,6 +7,7 @@ import { Toast } from '@/components/common/Toast';
 import { OptimizedParameterSelector } from '@/components/OptimizedParameterSelector';
 import { OptimizedChartItem } from '@/components/OptimizedChartItem';
 import { MemoryMonitor } from '@/components/MemoryMonitor';
+import { PersistenceIndicator } from '@/components/PersistenceIndicator';
 import { FileUploadButton } from '@/components/FileUploadButton';
 import { FileSystemConnector } from '@/components/FileSystemConnector';
 import { StorageManager } from '@/services/StorageManager';
@@ -41,7 +42,8 @@ export default function OptimizedPage() {
     setStorageManager,
     setMetadataManager,
     setFileSystemManager,
-    setDatabaseManager
+    setDatabaseManager,
+    persistenceStatus
   } = useOptimizedCSVData(showToast);
 
   // Handle file upload
@@ -192,6 +194,9 @@ export default function OptimizedPage() {
 
       {/* Toast notifications */}
       {toast && <Toast {...toast} />}
+      
+      {/* Persistence indicator */}
+      <PersistenceIndicator status={persistenceStatus} />
     </div>
   );
 }

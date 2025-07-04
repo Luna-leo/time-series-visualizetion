@@ -5,6 +5,7 @@ import { FileSystemManager } from '@/lib/fileSystem/fileSystemManager';
 import { StorageManager } from '@/services/StorageManager';
 import { MetadataManager } from '@/services/MetadataManager';
 import { DatabaseManager } from '@/services/DatabaseManager';
+import { DuckDBManager } from '@/lib/duckdb/duckdbManager';
 
 interface FileSystemConnectorProps {
   onConnected: (
@@ -42,7 +43,15 @@ export function FileSystemConnector({ onConnected, onError }: FileSystemConnecto
       const fileSystemManager = new FileSystemManager();
       await fileSystemManager.initialize();
       
+      // Initialize DuckDB
+      const duckdbManager = new DuckDBManager(fileSystemManager);
+      await duckdbManager.initialize();
+      
       const storageManager = new StorageManager();
+      storageManager.setFileSystemManager(fileSystemManager);
+      storageManager.setDuckDBManager(duckdbManager);
+      storageManager.setRootHandle(directoryHandle);
+      
       const metadataManager = new MetadataManager();
       const databaseManager = new DatabaseManager();
 
