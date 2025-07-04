@@ -17,6 +17,21 @@ export class DuckDBManager {
   }
 
   /**
+   * Validate SQL query for common syntax errors
+   * Note: This is a basic check and doesn't replace DuckDB's own validation
+   */
+  private validateSQLQuery(sql: string): void {
+    // Check for incorrect LIMIT syntax in standard SQL queries (not in function parameters)
+    // This regex looks for LIMIT = pattern outside of function calls
+    const incorrectLimitPattern = /(?<!read_csv\([^)]*)\bLIMIT\s*=\s*\d+/i;
+    if (incorrectLimitPattern.test(sql)) {
+      console.warn('Warning: Detected "LIMIT = n" syntax in SQL query.');
+      console.warn('Standard SQL LIMIT clause should be "LIMIT n" without equals sign.');
+      console.warn('Note: "LIMIT = n" is correct only as a parameter in functions like read_csv().');
+    }
+  }
+
+  /**
    * Initialize DuckDB-WASM
    */
   async initialize(): Promise<void> {
@@ -73,6 +88,15 @@ export class DuckDBManager {
     if (!this.conn) throw new Error('DuckDB not initialized');
 
     try {
+      // Validate SQL syntax
+      this.validateSQLQuery(sql);
+
+      // Log query in development mode for debugging
+      if (process.env.NODE_ENV === 'development' || process.env.DEBUG_SQL) {
+        console.log('Executing SQL query:', sql);
+        if (params) console.log('With parameters:', params);
+      }
+
       let result;
       if (params && params.length > 0) {
         // Use prepared statement with parameters
@@ -84,8 +108,22 @@ export class DuckDBManager {
         result = await this.conn.query(sql);
       }
       return result.toArray();
-    } catch (error) {
-      console.error('Query error:', sql, error);
+    } catch (error: any) {
+      // Enhanced error logging
+      console.error('SQL Query Error Details:');
+      console.error('Query:', sql);
+      if (params) console.error('Parameters:', params);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      
+      // Check for specific syntax errors
+      if (error.message?.includes('syntax error') || error.message?.includes('LIMIT')) {
+        console.error('Possible SQL syntax error detected. Please check the query syntax.');
+        console.error('Note: LIMIT clause in standard SQL should not have "=" sign.');
+        console.error('Correct: LIMIT 3');
+        console.error('Incorrect: LIMIT = 3');
+      }
+      
       throw error;
     }
   }
@@ -366,18 +404,32 @@ export class DuckDBManager {
       if (onProgress) onProgress({ current: 0, total: 1, phase: 'Analyzing structure' });
 
       // First, read headers from the first file to understand the structure
-      const headerResult = await this.conn.query(`
+      // Note: LIMIT = 3 is correct syntax for read_csv function parameters
+      const headerQuery = `
         SELECT * FROM read_csv('${tempNames[0]}', 
           AUTO_DETECT = FALSE,
           HEADER = FALSE,
           SKIP = 0,
           LIMIT = 3
         )
-      `);
+      `;
       
-      const headers = headerResult.toArray();
-      if (headers.length < 3) {
-        throw new Error('CSV file must have at least 3 header rows');
+      let headers: any[];
+      try {
+        const headerResult = await this.conn.query(headerQuery);
+        
+        headers = headerResult.toArray();
+        if (headers.length < 3) {
+          throw new Error('CSV file must have at least 3 header rows');
+        }
+      } catch (error: any) {
+        console.error('Error reading CSV headers:', error.message);
+        if (error.message?.includes('LIMIT') || error.message?.includes('Limit')) {
+          console.error('Note: This error might be from the CSV content itself, not the query.');
+          console.error('The read_csv function uses "LIMIT = 3" syntax correctly.');
+          warnings.push('CSV header reading failed. The file might contain invalid data.');
+        }
+        throw new Error(`Failed to read CSV headers: ${error.message}`);
       }
 
       // Extract parameter IDs from the first row (skip timestamp column)
@@ -462,7 +514,7 @@ export class DuckDBManager {
       if (onProgress) onProgress({ current: 1, total: 1, phase: 'Complete' });
 
       return {
-        data: outputData.buffer,
+        data: outputData.buffer as ArrayBuffer,
         recordCount,
         warnings
       };
